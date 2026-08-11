@@ -196,7 +196,7 @@ def _find_rects(page, target, words):
 
 def _redaction_appearance(style, default_replacement):
     """Return (fill, replacement text) for the requested redaction style."""
-    if style == "blackout":
+    if style in ("blackout", "blackbox"):
         return (0, 0, 0), ""
     return (1, 1, 1), default_replacement
 
@@ -287,7 +287,7 @@ def redact_pdf(pdf_bytes, style):
 
 def main():
     style = sys.argv[1] if len(sys.argv) > 1 else "text"
-    if style not in ("text", "blackout"):
+    if style not in ("text", "blackout", "blackbox"):
         style = "text"
 
     try:

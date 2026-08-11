@@ -30,7 +30,14 @@ const PROCESS_TIMEOUT = parseInt(
   10
 ) || 60000; // 60 seconds
 
-const ALLOWED_STYLES = new Set(["text", "blackout"]);
+function normalizeStyle(style) {
+  const raw = typeof style === "string" ? style.trim().toLowerCase() : "";
+  // The public UI currently sends "blackbox" for the black-bar style.
+  if (raw === "blackout" || raw === "blackbox") {
+    return "blackout";
+  }
+  return "text";
+}
 
 /**
  * Clean up expired sessions.
@@ -217,7 +224,7 @@ async function processPdf(pdfBuffer, style = "text") {
     throw new Error("File does not appear to be a valid PDF");
   }
 
-  const cleanStyle = ALLOWED_STYLES.has(style) ? style : "text";
+  const cleanStyle = normalizeStyle(style);
 
   const sessionId = createSession();
   if (!sessionId) {
