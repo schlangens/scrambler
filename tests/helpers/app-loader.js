@@ -68,6 +68,67 @@ function createLocalStorage() {
   };
 }
 
+// Transform the hosted app.js so the test harness can drive it via window.Scrambler
+// without modifying any source outside tests/.
+function prepareAppJs(code) {
+  if (code.includes('window.Scrambler')) return code;
+
+  const polyfill = `
+  const requestAnimationFrame = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+    ? window.requestAnimationFrame
+    : (cb) => setTimeout(cb, 0);
+`;
+
+  const api = `
+
+  // Test-only API exposed for programmatic use.
+  function offlineMask(input, config) {
+    if (config) offlineConfigure(config);
+    $('input-text').value = input;
+    maskText();
+    return { text: $('masked-text').value, mappings };
+  }
+
+  function offlineUnmask(maskedText, mappingsArg) {
+    if (mappingsArg) mappings = mappingsArg;
+    $('llm-response').value = maskedText;
+    unmaskText();
+    return $('final-text').value;
+  }
+
+  function offlineConfigure(config) {
+    if (config.preset && PRESETS[config.preset]) applyPreset(config.preset);
+    for (const p of PATTERNS) {
+      if (typeof config[p.type] === 'boolean') toggles[p.type] = config[p.type];
+    }
+    if (Array.isArray(config.alwaysMask)) {
+      alwaysMask = config.alwaysMask.map(term => ({ id: uid(), term, replacementType: 'generic' }));
+    }
+    if (Array.isArray(config.neverMask)) {
+      neverMask = config.neverMask.map(term => ({ id: uid(), term }));
+    }
+    if (typeof config.rememberCustomTerms === 'boolean') {
+      rememberTerms = config.rememberCustomTerms;
+    }
+    saveTerms();
+  }
+
+  window.Scrambler = {
+    mask: offlineMask,
+    unmask: offlineUnmask,
+    configure: offlineConfigure,
+    PRESETS,
+    get mappings() { return mappings; }
+  };
+`;
+
+  code = code.replace("  'use strict';", "  'use strict';" + polyfill);
+
+  const close = /\n\s*\}\)\(\);\s*$/.exec(code);
+  if (!close) return code;
+  return code.slice(0, close.index) + api + '\n})();';
+}
+
 function findScriptSource(preferred = null) {
   if (preferred === 'offline') {
     const offlineHtml = path.join(PUBLIC_DIR, 'scrambler-offline.html');
@@ -103,6 +164,7 @@ function findScriptSource(preferred = null) {
 
 function loadApp({ preferred } = {}) {
   const { source, code } = findScriptSource(preferred);
+  let preparedCode = code;
   if (!source) {
     return { exists: false, source: null };
   }
@@ -136,6 +198,8 @@ function loadApp({ preferred } = {}) {
     },
     File: function () {},
     setTimeout,
+    requestAnimationFrame: (cb) => setTimeout(cb, 0),
+    cancelAnimationFrame: () => {},
     setInterval: () => 0,
     clearInterval: () => {},
     Math,
@@ -153,8 +217,12 @@ function loadApp({ preferred } = {}) {
   };
   context.window = context;
 
+  if (source === 'app.js') {
+    preparedCode = prepareAppJs(code);
+  }
+
   vm.createContext(context);
-  vm.runInContext(code, context, { filename: source });
+  vm.runInContext(preparedCode, context, { filename: source });
 
   // Expose internal state so tests can inspect mappings without relying on globals.
   const stateExposure = `
@@ -173,11 +241,12 @@ function loadApp({ preferred } = {}) {
   let pendingConfig = {};
 
   function currentMappings() {
+    if (context.Scrambler && context.Scrambler.mappings) return context.Scrambler.mappings;
+    if (context.mappings) return context.mappings;
     if (typeof context.__getState === 'function') {
       return context.__getState().mappings;
     }
-    if (context.Scrambler && context.Scrambler.mappings) return context.Scrambler.mappings;
-    return context.mappings || [];
+    return [];
   }
 
   function mask(input, config = {}) {
