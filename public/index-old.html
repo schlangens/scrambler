@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scrambler - Anonymize Data for LLMs</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root{--black:#0a0a0f;--dark:#0d0d14;--darker-blue:#0f1729;--blue-dim:#1a2744;--blue:#2563eb;--blue-bright:#3b82f6;--text:#e2e8f0;--text-dim:#64748b;--text-muted:#334155;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--orange:#f97316}
+        *{margin:0;padding:0;box-sizing:border-box}body{background:var(--black);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh}
+        .bg{position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 20% -20%,rgba(37,99,235,.12) 0%,transparent 50%);pointer-events:none}
+        header{padding:1rem 2rem;border-bottom:1px solid rgba(37,99,235,.1);display:flex;justify-content:space-between;align-items:center;background:rgba(10,10,15,.9);position:relative;z-index:10}
+        .logo{font-weight:600;font-size:1.1rem}.logo a{color:inherit;text-decoration:none;margin-right:.75rem}.logo span{color:var(--blue-bright)}
+        .header-right{display:flex;align-items:center;gap:1.5rem}
+        .logout{font-size:.8rem;color:var(--text-dim);background:none;border:none;cursor:pointer}.logout:hover{color:var(--red)}
+        main{max-width:1000px;margin:0 auto;padding:2rem;position:relative;z-index:1}
+        
+        .hero{text-align:center;margin-bottom:2rem;padding:1.5rem;background:linear-gradient(135deg,rgba(15,23,41,.6),rgba(13,13,20,.8));border:1px solid rgba(37,99,235,.15);border-radius:12px}
+        .hero h1{font-size:1.5rem;margin-bottom:.5rem}
+        .hero p{color:var(--text-dim);font-size:.95rem}
+        
+        .instructions{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:10px;padding:1.25rem;margin-bottom:2rem}
+        .instructions h3{font-size:.9rem;color:var(--blue-bright);margin-bottom:.75rem;display:flex;align-items:center;gap:.5rem}
+        .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem}
+        @media(max-width:700px){.steps{grid-template-columns:1fr}}
+        .step{display:flex;align-items:flex-start;gap:.75rem}
+        .step-num{width:24px;height:24px;background:var(--blue);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:600;flex-shrink:0}
+        .step-text{font-size:.85rem;color:var(--text-dim);line-height:1.4}
+        .step-text strong{color:var(--text)}
+        
+        .card{background:linear-gradient(135deg,rgba(15,23,41,.6),rgba(13,13,20,.8));border:1px solid rgba(37,99,235,.15);border-radius:12px;margin-bottom:1.5rem}
+        .card-header{padding:1rem 1.25rem;border-bottom:1px solid rgba(37,99,235,.1);display:flex;justify-content:space-between;align-items:center}
+        .card-header h2{font-size:1rem;font-weight:500}
+        .card-body{padding:1.25rem}
+        
+        .btn{padding:.65rem 1.25rem;border-radius:6px;font-family:inherit;font-size:.9rem;cursor:pointer;transition:all .15s;border:none;display:inline-flex;align-items:center;gap:.5rem}
+        .btn-primary{background:var(--blue);color:white}.btn-primary:hover{background:var(--blue-bright)}
+        .btn-success{background:var(--green);color:white}.btn-success:hover{background:#16a34a}
+        .btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--text-muted)}.btn-ghost:hover{color:var(--text);border-color:var(--text-dim)}
+        .btn-danger{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.3)}.btn-danger:hover{background:rgba(239,68,68,.1)}
+        .btn-sm{padding:.4rem .75rem;font-size:.8rem}
+        .btn:disabled{opacity:.5;cursor:not-allowed}
+        
+        textarea{width:100%;padding:1rem;background:var(--black);border:1px solid rgba(37,99,235,.2);border-radius:8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.9rem;outline:none;resize:vertical;min-height:150px}
+        textarea:focus{border-color:var(--blue)}
+        textarea::placeholder{color:var(--text-muted)}
+        
+        .textarea-wrapper{position:relative}
+        .textarea-actions{position:absolute;top:.5rem;right:.5rem;display:flex;gap:.5rem}
+        
+        .detected-list{margin-top:1rem;padding:1rem;background:rgba(0,0,0,.3);border-radius:8px;max-height:200px;overflow-y:auto}
+        .detected-list h4{font-size:.8rem;color:var(--text-dim);margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.05em}
+        .detected-item{display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid rgba(37,99,235,.1);font-size:.85rem}
+        .detected-item:last-child{border-bottom:none}
+        .detected-type{font-size:.7rem;padding:.2rem .5rem;background:var(--blue-dim);border-radius:4px;color:var(--blue-bright);min-width:60px;text-align:center}
+        .detected-original{flex:1;font-family:'JetBrains Mono',monospace;color:var(--red);text-decoration:line-through;opacity:.7}
+        .detected-arrow{color:var(--text-muted)}
+        .detected-masked{flex:1;font-family:'JetBrains Mono',monospace;color:var(--green)}
+        .detected-delete{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:.25rem}.detected-delete:hover{color:var(--red)}
+        
+        .manual-add{display:flex;gap:.75rem;margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(37,99,235,.1)}
+        .manual-add input{flex:1;padding:.6rem;background:var(--black);border:1px solid rgba(37,99,235,.2);border-radius:6px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.85rem;outline:none}
+        .manual-add input:focus{border-color:var(--blue)}
+        .manual-add select{padding:.6rem;background:var(--darker-blue);border:1px solid rgba(37,99,235,.2);border-radius:6px;color:var(--text);font-family:inherit}
+        
+        .arrow-divider{display:flex;align-items:center;justify-content:center;padding:1rem;color:var(--text-muted);font-size:1.5rem}
+        
+        .empty{text-align:center;padding:1.5rem;color:var(--text-muted);font-size:.9rem}
+        
+        .badge{font-size:.7rem;padding:.25rem .5rem;border-radius:4px;margin-left:.5rem}
+        .badge-count{background:var(--green);color:white}
+    </style>
+</head>
+<body>
+    <div class="bg"></div>
+    <header>
+        <div class="logo"><a href="https://scottslab.io">🏠</a>🔀 <span>Scrambler</span></div>
+        <div class="header-right">
+            <button class="btn btn-danger btn-sm" onclick="newSession()">🔄 New Session</button>
+            <button class="logout" onclick="logout()">Logout</button>
+        </div>
+    </header>
+    
+    <main>
+        <div class="hero">
+            <h1>🔀 Anonymize Sensitive Data for Public LLMs</h1>
+            <p>Automatically detects and replaces PII, HIPAA, and business identifiers with fake data (Contoso, etc.)</p>
+        </div>
+        
+        <div class="instructions">
+            <h3>📋 How It Works</h3>
+            <div class="steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-text"><strong>Paste & Mask</strong> — Paste your text with sensitive data, click Mask. We auto-detect SSNs, emails, phones, names, etc.</div>
+                </div>
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-text"><strong>Copy to LLM</strong> — Copy the masked text to ChatGPT, Claude, or any public LLM. Safe to share!</div>
+                </div>
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-text"><strong>Unmask Response</strong> — Paste the LLM's response back, click Unmask. Original values restored!</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- STEP 1: Input & Mask -->
+        <div class="card">
+            <div class="card-header">
+                <h2>① Paste Your Sensitive Text</h2>
+            </div>
+            <div class="card-body">
+                <div class="textarea-wrapper">
+                    <textarea id="input-text" placeholder="Paste text containing sensitive data...&#10;&#10;Example: Patient John Smith (SSN: 123-45-6789) called from (317) 555-1234 regarding their account at Acme Healthcare. Email: john.smith@acme.com"></textarea>
+                </div>
+                <div style="display:flex;gap:.75rem;margin-top:1rem;align-items:center">
+                    <button class="btn btn-primary" onclick="maskText()">🔒 Mask Sensitive Data</button>
+                    <span style="color:var(--text-muted);font-size:.85rem">Auto-detects: SSN, Email, Phone, IP, DOB, Account #, MRN</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Detected Items -->
+        <div class="card" id="detected-card" style="display:none">
+            <div class="card-header">
+                <h2>🔍 Detected & Replaced <span class="badge badge-count" id="detected-count">0</span></h2>
+            </div>
+            <div class="card-body">
+                <div id="detected-list"></div>
+                <div class="manual-add">
+                    <input type="text" id="manual-value" placeholder="Add custom value to mask...">
+                    <select id="manual-type">
+                        <option value="name">Name</option>
+                        <option value="company">Company</option>
+                        <option value="email">Email</option>
+                        <option value="phone">Phone</option>
+                        <option value="address">Address</option>
+                        <option value="text">Other</option>
+                    </select>
+                    <button class="btn btn-ghost btn-sm" onclick="addManual()">+ Add</button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- STEP 2: Masked Output -->
+        <div class="card" id="masked-card" style="display:none">
+            <div class="card-header">
+                <h2>② Copy This to Your LLM</h2>
+                <button class="btn btn-success btn-sm" onclick="copyMasked()">📋 Copy</button>
+            </div>
+            <div class="card-body">
+                <textarea id="masked-text" readonly placeholder="Masked text will appear here..."></textarea>
+            </div>
+        </div>
+        
+        <div class="arrow-divider" id="arrow-divider" style="display:none">⬇️ Use masked text with LLM, then paste response below ⬇️</div>
+        
+        <!-- STEP 3: LLM Response -->
+        <div class="card" id="response-card" style="display:none">
+            <div class="card-header">
+                <h2>③ Paste LLM Response</h2>
+            </div>
+            <div class="card-body">
+                <textarea id="llm-response" placeholder="Paste the LLM's response here..."></textarea>
+                <button class="btn btn-success" style="margin-top:1rem" onclick="unmaskText()">🔓 Unmask & Restore Original Values</button>
+            </div>
+        </div>
+        
+        <!-- STEP 4: Final Output -->
+        <div class="card" id="final-card" style="display:none">
+            <div class="card-header">
+                <h2>④ Your Restored Text</h2>
+                <button class="btn btn-primary btn-sm" onclick="copyFinal()">📋 Copy</button>
+            </div>
+            <div class="card-body">
+                <textarea id="final-text" readonly placeholder="Unmasked text with real values..."></textarea>
+            </div>
+        </div>
+    </main>
+    
+    <script>
+        let sessionId = 'session_' + Date.now();
+        let mappings = [];
+        
+        async function maskText() {
+            const text = document.getElementById('input-text').value.trim();
+            if (!text) return alert('Please paste some text first');
+            
+            const res = await fetch('/api/mask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, sessionId })
+            });
+            
+            const result = await res.json();
+            mappings = result.mappings || [];
+            
+            // Show masked output
+            document.getElementById('masked-text').value = result.text;
+            document.getElementById('masked-card').style.display = 'block';
+            document.getElementById('arrow-divider').style.display = 'flex';
+            document.getElementById('response-card').style.display = 'block';
+            
+            // Show detected items
+            renderDetected(result.detected || []);
+            
+            // Scroll to masked output
+            document.getElementById('masked-card').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function renderDetected(detected) {
+            const card = document.getElementById('detected-card');
+            const list = document.getElementById('detected-list');
+            const count = document.getElementById('detected-count');
+            
+            if (mappings.length === 0) {
+                card.style.display = 'none';
+                return;
+            }
+            
+            card.style.display = 'block';
+            count.textContent = mappings.length;
+            
+            list.innerHTML = mappings.map(m => `
+                <div class="detected-item">
+                    <span class="detected-type">${m.type}</span>
+                    <span class="detected-original">${esc(m.original)}</span>
+                    <span class="detected-arrow">→</span>
+                    <span class="detected-masked">${esc(m.masked)}</span>
+                    <button class="detected-delete" onclick="deleteMapping('${m.id}')" title="Remove">×</button>
+                </div>
+            `).join('');
+        }
+        
+        async function addManual() {
+            const value = document.getElementById('manual-value').value.trim();
+            const type = document.getElementById('manual-type').value;
+            if (!value) return;
+            
+            await fetch('/api/mappings/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ original: value, type, sessionId })
+            });
+            
+            document.getElementById('manual-value').value = '';
+            
+            // Re-mask the text to include new mapping
+            await maskText();
+        }
+        
+        async function deleteMapping(id) {
+            await fetch(`/api/mappings/${id}`, { method: 'DELETE' });
+            mappings = mappings.filter(m => m.id !== id);
+            renderDetected([]);
+            
+            // Re-mask if we have input
+            const text = document.getElementById('input-text').value.trim();
+            if (text) await maskText();
+        }
+        
+        async function unmaskText() {
+            const text = document.getElementById('llm-response').value.trim();
+            if (!text) return alert('Please paste the LLM response first');
+            
+            const res = await fetch('/api/unmask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text, sessionId })
+            });
+            
+            const result = await res.json();
+            document.getElementById('final-text').value = result.text;
+            document.getElementById('final-card').style.display = 'block';
+            document.getElementById('final-card').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function copyMasked() {
+            navigator.clipboard.writeText(document.getElementById('masked-text').value);
+            alert('Copied! Safe to paste into any LLM.');
+        }
+        
+        function copyFinal() {
+            navigator.clipboard.writeText(document.getElementById('final-text').value);
+            alert('Copied!');
+        }
+        
+        async function newSession() {
+            if (mappings.length > 0 && !confirm('Start a new session? This will clear current mappings.')) return;
+            
+            await fetch(`/api/session/${sessionId}`, { method: 'DELETE' });
+            sessionId = 'session_' + Date.now();
+            mappings = [];
+            
+            document.getElementById('input-text').value = '';
+            document.getElementById('masked-text').value = '';
+            document.getElementById('llm-response').value = '';
+            document.getElementById('final-text').value = '';
+            document.getElementById('detected-card').style.display = 'none';
+            document.getElementById('masked-card').style.display = 'none';
+            document.getElementById('arrow-divider').style.display = 'none';
+            document.getElementById('response-card').style.display = 'none';
+            document.getElementById('final-card').style.display = 'none';
+        }
+        
+        function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+        async function logout() { await fetch('/auth/logout', { method: 'POST' }); location.href = '/login'; }
+        
+        // Enter key to add manual
+        document.getElementById('manual-value').addEventListener('keypress', e => { if(e.key === 'Enter') addManual(); });
+    </script>
+</body>
+</html>
