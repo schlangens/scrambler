@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Scrambler masks PII in text locally in your browser and redacts PII from PDFs before sharing with LLMs.">
+  <meta name="description" content="Scrambler masks PII in text locally in your browser. This offline copy requires no network connection and sends nothing to any server.">
   <title>Scrambler - Anonymize Data for LLMs</title>
   
   <style>
@@ -677,7 +677,7 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
     always: 'scrambler-always-mask', never: 'scrambler-never-mask'
   };
 
-  let mappings = [], counters = {}, pdfBase64 = null, pdfBlobUrl = null, activePreset = 'custom';
+  let mappings = [], counters = {}, activePreset = 'custom';
   let toggles = Object.fromEntries(PATTERNS.map(p => [p.type, true])), alwaysMask = [], neverMask = [], rememberTerms = false;
 
   const $ = id => document.getElementById(id);
@@ -919,8 +919,6 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
   }
 
   function onRememberChange() { rememberTerms = $('remember-terms').checked; saveSettings(); saveTerms(); announce(rememberTerms ? 'Custom terms will be remembered on this device.' : 'Custom terms will not be stored on this device.'); }
-
-
   function switchTab(tab) {
     $$('.tab').forEach(t => { const active = t.id === `tab-${tab}`; t.classList.toggle('active', active); t.setAttribute('aria-selected', String(active)); t.setAttribute('tabindex', active ? '0' : '-1'); });
     $$('.tab-content').forEach(c => c.classList.toggle('active', c.id === `${tab}-tab`));
@@ -952,10 +950,8 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
   function newSession() {
     if ((mappings.length > 0) && !confirm('Start over? This will clear everything.')) return;
     mappings = []; counters = {};
-    
-    $('input-text').value = ''; $('masked-text').value = ''; $('llm-response').value = ''; $('final-text').value = '';
-    hide(['detected-card','masked-card','arrow-divider','response-card','final-card','pdf-result-card']);
-    setStatus('text-status', '', 'info'); setStatus('pdf-status', '', 'info');
+$('input-text').value = ''; $('masked-text').value = ''; $('llm-response').value = ''; $('final-text').value = '';
+    hide(['detected-card','masked-card','arrow-divider','response-card','final-card']);
     renderDetected(); updateCounts();
   }
 

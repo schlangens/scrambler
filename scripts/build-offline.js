@@ -117,20 +117,12 @@ function removeBalancedBlock(html, tag, predicate) {
   return result + html.slice(lastIndex);
 }
 
-function removeTag(html, tag, predicate) {
-  const re = new RegExp(`<${tag}\\b[^>]*>`, 'gi');
-  return html.replace(re, (match) => {
-    const attrs = match.slice(tag.length + 1, match.length - 1);
-    return predicate(attrs) ? '' : match;
-  });
-}
-
-function stripExternalLinks(html) {
+function removeExternalLinks(html) {
   // Remove any <a> tag whose href is an absolute http(s) URL, preserving inner content.
   return html.replace(/<a\b[^>]*\bhref=["']https?:\/\/[^"']+["'][^>]*>([\s\S]*?)<\/a>/gi, '$1');
 }
 
-function stripExternalTags(html) {
+function removeExternalTags(html) {
   // <link> tags (external fonts, stylesheets, etc.)
   html = html.replace(/<link\b[^>]*>/gi, '');
   // <script> tags with a src attribute (external or hosted app.js)
@@ -141,39 +133,86 @@ function stripExternalTags(html) {
   return html;
 }
 
-function stripScriptPdf(js) {
-  // Remove the PDF-only functions: checkPdfStatus, setPdfBusy, processPdf, downloadPdf.
-  const pdfStart = js.search(/\n\s*async function checkPdfStatus\b/);
-  if (pdfStart !== -1) {
-    // The PDF block ends where the tab-switching function begins.
-    const after = js.slice(pdfStart + 1);
-    const nextMatch = after.match(/\n\s*function switchTab\b/);
-    if (nextMatch) {
-      const nextIndex = after.indexOf(nextMatch[0]) + pdfStart + 1;
-      js = js.slice(0, pdfStart) + '\n' + js.slice(nextIndex);
+function removeTopLevelFunctionBlocks(js, predicate) {
+  let result = '';
+  let i = 0;
+
+  while (i < js.length) {
+    const match = js.slice(i).match(/\n\s*(async\s+)?function\s+(\w+)\s*\(/);
+    if (!match) {
+      result += js.slice(i);
+      break;
+    }
+
+    const fnStart = i + match.index;
+    const fnName = match[2];
+    const sigEnd = fnStart + match[0].length;
+    const braceIdx = js.indexOf('{', sigEnd);
+    if (braceIdx === -1) {
+      result += js.slice(i);
+      break;
+    }
+
+    // Top-level functions inside the IIFE are at brace depth 1.
+    let depth = 0;
+    for (let k = 0; k < braceIdx; k++) {
+      if (js[k] === '{') depth++;
+      else if (js[k] === '}') depth--;
+    }
+
+    if (depth !== 1 || !predicate(fnName)) {
+      result += js.slice(i, sigEnd);
+      i = sigEnd;
+      continue;
+    }
+
+    let d = 1;
+    let j = braceIdx + 1;
+    while (j < js.length && d > 0) {
+      if (js[j] === '{') d++;
+      else if (js[j] === '}') d--;
+      j++;
+    }
+
+    if (d === 0) {
+      result += js.slice(i, fnStart);
+      i = j;
+      while (i < js.length && /[ \t]/.test(js[i])) i++;
+      if (i < js.length && js[i] === '\n') i++;
     } else {
-      js = js.slice(0, pdfStart);
+      result += js.slice(i);
+      break;
     }
   }
 
-  // Remove the checkPdfStatus call inside switchTab.
-  js = js.replace(/\n\s*if\s*\(\s*tab\s*===\s*['"]pdf['"]\s*\)\s*checkPdfStatus\(\)\s*;?\s*/g, '\n');
+  return result;
+}
 
-  // Remove the drop-zone / PDF event-listener block from bindEvents.
-  const dzStart = js.search(/\n\s*const dz = \$\(['"]drop-zone['"]\)/);
-  if (dzStart !== -1) {
-    const after = js.slice(dzStart + 1);
-    const tablistMatch = after.match(/\n\s*const tablist = document\.querySelector\(['"].tabs['"]\)/);
-    if (tablistMatch) {
-      const tablistIndex = after.indexOf(tablistMatch[0]) + dzStart + 1;
-      js = js.slice(0, dzStart) + '\n' + js.slice(tablistIndex);
-    }
-  }
+function removeMatchingLines(js, pattern) {
+  return js.split('\n').filter(line => !pattern.test(line)).join('\n');
+}
 
-  // Remove references to PDF state in newSession that are no-ops anyway.
-  js = js.replace(/if \(\(mappings\.length > 0 \|\| pdfBase64\) && !confirm\(/g, 'if ((mappings.length > 0) && !confirm(');
-  js = js.replace(/mappings = \[\]; counters = \{\}; pdfBase64 = null;/g, 'mappings = []; counters = {};');
-  js = js.replace(/if \(pdfBlobUrl\) \{ URL\.revokeObjectURL\(pdfBlobUrl\); pdfBlobUrl = null; \}/g, '');
+function stripScriptPdf(js) {
+  // Remove top-level PDF-only function declarations by name.
+  js = removeTopLevelFunctionBlocks(js, name => /pdf/i.test(name));
+
+  // Remove the PDF status check inside switchTab.
+  js = js.replace(/\n\s*if\s*\(\s*tab\s*===?\s*["']pdf["']\s*\)\s*\{\s*checkPdfStatus\s*\(\s*\)\s*;?\s*\}\s*/gi, '\n');
+  js = js.replace(/\n\s*if\s*\(\s*tab\s*===?\s*["']pdf["']\s*\)\s*checkPdfStatus\s*\(\s*\)\s*;?\s*/gi, '\n');
+
+  // Remove PDF state variables from the let declaration.
+  js = js.replace(/,\s*pdfBase64\s*=\s*null\s*,\s*pdfBlobUrl\s*=\s*null\s*,?/g, ',');
+
+  // Remove references to PDF state in newSession.
+  js = js.replace(/\s*\|\|\s*pdfBase64/g, '');
+  js = js.replace(/;\s*pdfBase64\s*=\s*null\s*;?/g, ';');
+  js = js.replace(/\n\s*if\s*\(\s*pdfBlobUrl\s*\)\s*\{\s*URL\.revokeObjectURL\s*\(\s*pdfBlobUrl\s*\)\s*;\s*pdfBlobUrl\s*=\s*null\s*;\s*\}\s*/g, '\n');
+
+  // Remove PDF-specific listeners, variables and UI lines from bindEvents/newSession.
+  js = removeMatchingLines(js, /\b(?:dz|pdfInput|processPdf|downloadPdf|download-pdf-btn|drop-zone|pdf-input|pdf-status)\b/);
+
+  // Remove dead pdf-result-card reference from the hide list.
+  js = js.replace(/,\s*['"]pdf-result-card['"]/g, '');
 
   return js;
 }
@@ -237,30 +276,66 @@ function insertOfflinePolyfills(js) {
   );
 }
 
-function sanitizeHtml(html, css, js) {
-  html = stripExternalTags(html);
-  html = stripExternalLinks(html);
+function isPdfTabpanel(attrs) {
+  if (!/\brole=["']tabpanel["']/.test(attrs)) return false;
+  return /\bid=["'][^"']*pdf/i.test(attrs) || /\baria-labelledby=["'][^"']*pdf/i.test(attrs);
+}
 
-  // Remove the tab bar and the PDF-only content section.
-  html = removeBalancedBlock(html, 'div', attrs => /class=["'][^"']*\btabs\b/.test(attrs));
-  html = removeBalancedBlock(html, 'section', attrs => /\bid=["']pdf-tab["']/.test(attrs));
-  html = removeBalancedBlock(html, 'div', attrs => /\bid=["']pdf-tab["']/.test(attrs));
+function isPdfTabButton(attrs) {
+  if (!/\brole=["']tab["']/.test(attrs)) return false;
+  return /\baria-controls=["'][^"']*pdf/i.test(attrs)
+    || /\bid=["'][^"']*pdf/i.test(attrs)
+    || /\bdata-tab=["'][^"']*pdf["']/.test(attrs)
+    || /\bhref=["'][^"']*pdf[^"']*["']/.test(attrs);
+}
+
+function sanitizeHtml(html, css, js) {
+  html = removeExternalTags(html);
+  html = removeExternalLinks(html);
+
+  // Remove the tab bar by role or class, covering <div>, <nav>, <ul>, <ol>.
+  const tablistPredicate = attrs => /\brole=["']tablist["']/.test(attrs) || /\bclass=["'][^"']*\btabs\b/.test(attrs);
+  html = removeBalancedBlock(html, 'div', tablistPredicate);
+  html = removeBalancedBlock(html, 'nav', tablistPredicate);
+  html = removeBalancedBlock(html, 'ul', tablistPredicate);
+  html = removeBalancedBlock(html, 'ol', tablistPredicate);
+
+  // If the tablist markup changed and a PDF tab button still exists, remove it.
+  ['button', 'a', 'li'].forEach(tag => {
+    html = removeBalancedBlock(html, tag, isPdfTabButton);
+  });
+
+  // Remove the PDF content panel(s) by role and id/aria-labelledby.
+  html = removeBalancedBlock(html, 'section', isPdfTabpanel);
+  html = removeBalancedBlock(html, 'div', isPdfTabpanel);
+  html = removeBalancedBlock(html, 'article', isPdfTabpanel);
+
   // Remove the "Use Scrambler Offline" card (we are already offline).
-  html = removeBalancedBlock(html, 'div', attrs => /class=["'][^"']*\boffline-card\b/.test(attrs));
+  html = removeBalancedBlock(html, 'div', attrs => /\bclass=["'][^"']*\boffline-card\b/.test(attrs));
+
+  // Remove the offline download link if it is outside the offline card.
+  html = removeBalancedBlock(html, 'a', attrs => /\bid=["']offline-link["']/.test(attrs) || /\bdownload\b/.test(attrs));
+
+  // Rewrite any remaining paragraphs that mention PDF so the copy is accurate.
+  html = html.replace(/<p[^>]*>(?:(?!<\/p>).)*?\bPDFs?\b[\s\S]*?<\/p>/gi, '<p>Mask PII in text before sharing with LLMs or external parties</p>');
+
+  // Update the meta description to describe the offline, text-only copy.
+  html = html.replace(
+    /(<meta[^>]*\bname=["']description["'][^>]*\bcontent=)["'][^"']*["']/i,
+    '$1"Scrambler masks PII in text locally in your browser. This offline copy requires no network connection and sends nothing to any server."'
+  );
+  html = html.replace(
+    /(<meta[^>]*\bcontent=["'][^"']*["'][^>]*\bname=["']description["'])/i,
+    '$1 content="Scrambler masks PII in text locally in your browser. This offline copy requires no network connection and sends nothing to any server."'
+  );
+
+  js = insertOfflinePolyfills(js);
 
   // Add an offline note near the top of the text section.
   html = html.replace(
     /<section id=["']text-tab["'][^>]*>/i,
     match => `${match}\n    <div class="security-notice">\n      <div class="icon" aria-hidden="true">💻</div>\n      <div>\n        <h2>Offline Copy — Text Masking Only</h2>\n        <p>This file runs entirely on your computer. No network connection is required, no data is sent anywhere, and nothing is stored. PDF redaction is not available because it requires the server-side redactor.</p>\n      </div>\n    </div>`
   );
-
-  // Replace the description in the hero to match the offline scope.
-  html = html.replace(
-    /<p>Mask PII in text or redact PII from PDFs before sharing with LLMs or external parties<\/p>/i,
-    '<p>Mask PII in text before sharing with LLMs or external parties</p>'
-  );
-
-  js = insertOfflinePolyfills(js);
 
   // Insert inlined CSS and JS. Use a function replacement so that '$'
   // characters in the CSS/JS source are not interpreted as special patterns.
@@ -313,7 +388,7 @@ function main() {
 
   assertNoNetworkReferences(html);
 
-  // Deterministic: collapse only the line endings/indentation we control.
+  // Deterministic: the script performs no date/random-dependent transformations.
   fs.writeFileSync(OUT, html, 'utf8');
 
   console.log(`Wrote ${OUT} (${html.length} bytes)`);
@@ -323,4 +398,4 @@ if (require.main === module) {
   main();
 }
 
-module.exports = { main, stripScriptPdf, addOfflineApi, insertOfflinePolyfills, sanitizeHtml };
+module.exports = { main, stripScriptPdf, addOfflineApi, insertOfflinePolyfills, sanitizeHtml, removeTopLevelFunctionBlocks, removeMatchingLines };
