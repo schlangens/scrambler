@@ -13,7 +13,9 @@ const PORT = process.env.PORT || 3057;
 // cannot affect the rate-limit key.
 app.set('trust proxy', 1);
 
-const ALLOWED_STYLES = new Set(['text', 'blackbox']);
+// The redaction engine accepts 'text', 'blackout' and 'blackbox'
+// ('blackbox' is an alias for 'blackout' used by the UI radio button).
+const ALLOWED_STYLES = new Set(['text', 'blackout', 'blackbox']);
 const PDF_MAGIC = Buffer.from('%PDF-');
 
 // Verify the uploaded bytes actually start with the PDF file signature,
@@ -22,7 +24,7 @@ function isPdfBuffer(buffer) {
   return buffer && buffer.length >= PDF_MAGIC.length && buffer.slice(0, PDF_MAGIC.length).equals(PDF_MAGIC);
 }
 
-function createRateLimiter({ windowMs, maxRequests }) {
+function createRateLimiter({ windowMs, maxRequests, maxTracked }) {
   const hits = new Map();
 
   // Periodically drop stale entries to keep memory bounded.
@@ -38,14 +40,31 @@ function createRateLimiter({ windowMs, maxRequests }) {
     try {
       const ip = req.ip;
       if (!ip) {
-        // Fail-closed: if we cannot determine the client address, deny.
-        return res.status(429).json({ error: 'Rate limiter unavailable' });
+        // Fail-closed: if we cannot determine the client address, the limiter
+        // cannot evaluate the request. 503 is the honest status for that state.
+        return res.status(503).json({ error: 'Rate limiter unavailable' });
       }
 
       const now = Date.now();
       const cutoff = now - windowMs;
-      const timestamps = hits.get(ip) || [];
-      while (timestamps.length && timestamps[0] <= cutoff) timestamps.shift();
+      let timestamps = hits.get(ip);
+      if (timestamps) {
+        while (timestamps.length && timestamps[0] <= cutoff) timestamps.shift();
+        if (timestamps.length === 0) {
+          hits.delete(ip);
+          timestamps = undefined;
+        }
+      }
+
+      // Fail-closed on address-capacity exhaustion: a rotating-IP attacker
+      // (trivial with IPv6) could otherwise grow this map faster than the
+      // cleanup prunes it. Existing tracked addresses keep working; new
+      // addresses are denied once the cap is hit.
+      if (!timestamps && hits.size >= maxTracked) {
+        return res.status(429).json({ error: 'Rate limiter at capacity' });
+      }
+
+      if (!timestamps) timestamps = [];
 
       if (timestamps.length >= maxRequests) {
         return res.status(429).json({ error: 'Too many requests. Please try again later.' });
@@ -56,17 +75,19 @@ function createRateLimiter({ windowMs, maxRequests }) {
       next();
     } catch (err) {
       // Fail-closed: log only the internal limiter error (no request content),
-      // then deny the request.
+      // then deny the request. 503 accurately reports that evaluation failed.
       console.error('Rate limiter error:', err.message || err);
-      return res.status(429).json({ error: 'Rate limiter unavailable' });
+      return res.status(503).json({ error: 'Rate limiter unavailable' });
     }
   };
 }
 
 // PDF analysis/redaction spawn Python processes and are unauthenticated.
-// Cap each IP at 20 requests per 15 minutes across both endpoints.
-// This complements the 5-concurrent-session and 10MB upload limits.
-const pdfRateLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 20 });
+// Cap each IP at 20 requests per 15 minutes across both endpoints, and cap
+// the total number of tracked addresses to limit memory use under a
+// rotating-IP attack. This complements the 5-concurrent-session and 10MB
+// upload limits.
+const pdfRateLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 20, maxTracked: 10000 });
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -86,21 +107,29 @@ const upload = multer({
 // Security headers. default-src 'self' covers the end state where session 4
 // has moved all JS/CSS into separate files and removed the Google Fonts link,
 // so the page makes no third-party requests. No 'unsafe-inline' is allowed.
+// upgrade-insecure-requests is only applied in production; it would break the
+// README's plain-HTTP local development flow by trying to load same-origin
+// resources over HTTPS.
+const isProduction = process.env.NODE_ENV === 'production';
+const cspDirectives = {
+  defaultSrc: ["'self'"],
+  scriptSrc: ["'self'"],
+  scriptSrcAttr: ["'none'"],
+  styleSrc: ["'self'"],
+  fontSrc: ["'self'"],
+  imgSrc: ["'self'", "data:"],
+  connectSrc: ["'self'"],
+  objectSrc: ["'none'"],
+  frameAncestors: ["'none'"],
+  baseUri: ["'self'"],
+  formAction: ["'self'"]
+};
+if (isProduction) cspDirectives.upgradeInsecureRequests = [];
+
 app.use(helmet({
   contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: ["'self'"],
-      styleSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      imgSrc: ["'self'", "data:"],
-      connectSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      frameAncestors: ["'none'"],
-      baseUri: ["'self'"],
-      formAction: ["'self'"],
-      upgradeInsecureRequests: []
-    }
+    useDefaults: false,
+    directives: cspDirectives
   },
   hsts: {
     maxAge: 15552000,
