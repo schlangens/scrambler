@@ -1,474 +1,225 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scrambler - Anonymize Data for LLMs</title>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
-    <style>
-        :root{--black:#0a0a0f;--dark:#0d0d14;--darker-blue:#0f1729;--blue-dim:#1a2744;--blue:#2563eb;--blue-bright:#3b82f6;--text:#e2e8f0;--text-dim:#64748b;--text-muted:#334155;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--orange:#f97316}
-        *{margin:0;padding:0;box-sizing:border-box}body{background:var(--black);color:var(--text);font-family:'Space Grotesk',sans-serif;min-height:100vh}
-        .bg{position:fixed;inset:0;background:radial-gradient(ellipse 80% 50% at 20% -20%,rgba(37,99,235,.12) 0%,transparent 50%);pointer-events:none}
-        header{padding:1rem 2rem;border-bottom:1px solid rgba(37,99,235,.1);display:flex;justify-content:space-between;align-items:center;background:rgba(10,10,15,.9);position:relative;z-index:10;flex-wrap:wrap;gap:1rem}
-        .logo{font-weight:600;font-size:1.1rem}.logo a{color:inherit;text-decoration:none;margin-right:.75rem}.logo span{color:var(--blue-bright)}
-        main{max-width:1000px;margin:0 auto;padding:2rem;position:relative;z-index:1}
-        
-        /* Tabs */
-        .tabs{display:flex;gap:.5rem;margin-bottom:1.5rem;border-bottom:1px solid rgba(37,99,235,.2);padding-bottom:.5rem}
-        .tab{padding:.75rem 1.5rem;border-radius:8px 8px 0 0;cursor:pointer;transition:all .15s;font-weight:500;color:var(--text-dim);border:1px solid transparent;border-bottom:none}
-        .tab:hover{color:var(--text);background:rgba(37,99,235,.1)}
-        .tab.active{color:var(--blue-bright);background:rgba(37,99,235,.15);border-color:rgba(37,99,235,.3)}
-        .tab-content{display:none}
-        .tab-content.active{display:block}
-        
-        .hero{text-align:center;margin-bottom:2rem;padding:1.5rem;background:linear-gradient(135deg,rgba(15,23,41,.6),rgba(13,13,20,.8));border:1px solid rgba(37,99,235,.15);border-radius:12px}
-        .hero h1{font-size:1.5rem;margin-bottom:.5rem}
-        .hero p{color:var(--text-dim);font-size:.95rem}
-        
-        .security-notice{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.5rem;display:flex;align-items:flex-start;gap:1rem}
-        .security-notice .icon{font-size:1.5rem}
-        .security-notice h4{color:var(--green);font-size:.9rem;margin-bottom:.25rem}
-        .security-notice p{font-size:.85rem;color:var(--text-dim);line-height:1.5}
-        
-        .how-it-works{background:rgba(37,99,235,.1);border:1px solid rgba(37,99,235,.2);border-radius:10px;padding:1.25rem;margin-bottom:2rem}
-        .how-it-works h3{font-size:.9rem;color:var(--blue-bright);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
-        .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem}
-        .step{display:flex;align-items:flex-start;gap:.75rem}
-        .step-num{width:24px;height:24px;background:var(--blue);color:white;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:600;flex-shrink:0}
-        .step-text{font-size:.85rem;color:var(--text-dim);line-height:1.4}
-        .step-text strong{color:var(--text)}
-        
-        .card{background:linear-gradient(135deg,rgba(15,23,41,.6),rgba(13,13,20,.8));border:1px solid rgba(37,99,235,.15);border-radius:12px;margin-bottom:1.5rem}
-        .card-header{padding:1rem 1.25rem;border-bottom:1px solid rgba(37,99,235,.1);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem}
-        .card-header h2{font-size:1rem;font-weight:500}
-        .card-body{padding:1.25rem}
-        
-        .btn{padding:.65rem 1.25rem;border-radius:6px;font-family:inherit;font-size:.9rem;cursor:pointer;transition:all .15s;border:none;display:inline-flex;align-items:center;gap:.5rem}
-        .btn-primary{background:var(--blue);color:white}.btn-primary:hover{background:var(--blue-bright)}
-        .btn-success{background:var(--green);color:white}.btn-success:hover{background:#16a34a}
-        .btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--text-muted)}.btn-ghost:hover{color:var(--text);border-color:var(--text-dim)}
-        .btn-danger{background:transparent;color:var(--red);border:1px solid rgba(239,68,68,.3)}.btn-danger:hover{background:rgba(239,68,68,.1)}
-        .btn-sm{padding:.4rem .75rem;font-size:.8rem}
-        .btn:disabled{opacity:.5;cursor:not-allowed}
-        
-        textarea{width:100%;padding:1rem;background:var(--black);border:1px solid rgba(37,99,235,.2);border-radius:8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.9rem;outline:none;resize:vertical;min-height:150px}
-        textarea:focus{border-color:var(--blue)}
-        textarea::placeholder{color:var(--text-muted)}
-        
-        .detected-list{margin-top:1rem;padding:1rem;background:rgba(0,0,0,.3);border-radius:8px;max-height:200px;overflow-y:auto}
-        .detected-item{display:flex;align-items:center;gap:.75rem;padding:.5rem 0;border-bottom:1px solid rgba(37,99,235,.1);font-size:.85rem;flex-wrap:wrap}
-        .detected-item:last-child{border-bottom:none}
-        .detected-type{font-size:.7rem;padding:.2rem .5rem;background:var(--blue-dim);border-radius:4px;color:var(--blue-bright);min-width:50px;text-align:center}
-        .detected-original{font-family:'JetBrains Mono',monospace;color:var(--red);text-decoration:line-through;opacity:.7;word-break:break-all}
-        .detected-arrow{color:var(--text-muted)}
-        .detected-masked{font-family:'JetBrains Mono',monospace;color:var(--green);word-break:break-all}
-        .detected-delete{background:none;border:none;color:var(--text-muted);cursor:pointer;padding:.25rem;margin-left:auto}.detected-delete:hover{color:var(--red)}
-        
-        .manual-add{display:flex;gap:.75rem;margin-top:1rem;padding-top:1rem;border-top:1px solid rgba(37,99,235,.1);flex-wrap:wrap}
-        .manual-add input{flex:1;min-width:150px;padding:.6rem;background:var(--black);border:1px solid rgba(37,99,235,.2);border-radius:6px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.85rem;outline:none}
-        .manual-add input:focus{border-color:var(--blue)}
-        .manual-add select{padding:.6rem;background:var(--darker-blue);border:1px solid rgba(37,99,235,.2);border-radius:6px;color:var(--text);font-family:inherit}
-        
-        .arrow-divider{display:flex;align-items:center;justify-content:center;padding:1rem;color:var(--text-muted);font-size:1.25rem}
-        
-        .badge{font-size:.7rem;padding:.25rem .5rem;border-radius:4px;margin-left:.5rem}
-        .badge-count{background:var(--green);color:white}
-        
-        /* PDF Upload */
-        .drop-zone{border:2px dashed rgba(37,99,235,.3);border-radius:12px;padding:3rem 2rem;text-align:center;transition:all .2s;cursor:pointer}
-        .drop-zone:hover,.drop-zone.dragover{border-color:var(--blue-bright);background:rgba(37,99,235,.05)}
-        .drop-zone-icon{font-size:3rem;margin-bottom:1rem}
-        .drop-zone-text{color:var(--text-dim);margin-bottom:.5rem}
-        .drop-zone-hint{font-size:.8rem;color:var(--text-muted)}
-        .drop-zone input[type="file"]{display:none}
-        
-        .pdf-status{display:flex;align-items:center;gap:.5rem;padding:.5rem 1rem;background:rgba(37,99,235,.1);border-radius:6px;font-size:.85rem;margin-bottom:1rem}
-        .pdf-status.success{background:rgba(34,197,94,.1);color:var(--green)}
-        .pdf-status.error{background:rgba(239,68,68,.1);color:var(--red)}
-        .pdf-status.processing{background:rgba(234,179,8,.1);color:var(--yellow)}
-        
-        .pdf-results{margin-top:1rem}
-        .pdf-stat{display:flex;justify-content:space-between;padding:.5rem 0;border-bottom:1px solid rgba(37,99,235,.1);font-size:.9rem}
-        .pdf-stat:last-child{border-bottom:none}
-        .pdf-stat-label{color:var(--text-dim)}
-        .pdf-stat-value{font-family:'JetBrains Mono',monospace}
-        
-        .spinner{display:inline-block;width:16px;height:16px;border:2px solid transparent;border-top-color:currentColor;border-radius:50%;animation:spin 1s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        
-        footer{text-align:center;padding:2rem;color:var(--text-muted);font-size:.8rem;border-top:1px solid rgba(37,99,235,.1);margin-top:2rem}
-        footer a{color:var(--blue-bright)}
-        
-        @media(max-width:600px){
-            header{padding:1rem}
-            main{padding:1rem}
-            .tabs{flex-wrap:wrap}
-            .tab{padding:.5rem 1rem;font-size:.9rem}
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Scrambler masks PII in text locally in your browser and redacts PII from PDFs before sharing with LLMs.">
+  <title>Scrambler - Anonymize Data for LLMs</title>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-    <div class="bg"></div>
-    <header>
-        <div class="logo"><a href="https://scottslab.io">🏠</a>🔀 <span>Scrambler</span></div>
-        <button class="btn btn-danger btn-sm" onclick="newSession()">🔄 Start Over</button>
-    </header>
-    
-    <main>
-        <div class="hero">
-            <h1>🔀 Anonymize Sensitive Data</h1>
-            <p>Mask PII in text or PDFs before sharing with LLMs or external parties</p>
+  <div class="bg" aria-hidden="true"></div>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header>
+    <div class="logo">
+      <a href="https://scottslab.io" aria-label="Scott's Lab home"><span aria-hidden="true">🏠</span></a>
+      <span aria-hidden="true">🔀</span>
+      <span class="logo-name">Scrambler</span>
+    </div>
+    <button id="new-session" class="btn btn-danger btn-sm" aria-label="Start over and clear the current session"><span aria-hidden="true">🔄</span> Start Over</button>
+  </header>
+
+  <main id="main-content">
+    <div class="hero">
+      <h1><span aria-hidden="true">🔀</span> Anonymize Sensitive Data</h1>
+      <p>Mask PII in text or redact PII from PDFs before sharing with LLMs or external parties</p>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Tool sections">
+      <button id="tab-text" class="tab active" role="tab" aria-selected="true" aria-controls="text-tab" tabindex="0"><span aria-hidden="true">📝</span> Text</button>
+      <button id="tab-pdf" class="tab" role="tab" aria-selected="false" aria-controls="pdf-tab" tabindex="-1"><span aria-hidden="true">📄</span> PDF Redact</button>
+    </div>
+
+    <section id="text-tab" class="tab-content active" role="tabpanel" aria-labelledby="tab-text">
+      <div class="security-notice">
+        <div class="icon" aria-hidden="true">🔒</div>
+        <div>
+          <h2>100% Private — Browser-Only Processing</h2>
+          <p>Text masking happens entirely in your browser. Nothing is sent to any server. You can confirm this by opening your browser's Network panel and watching zero requests appear while you mask. When you close this tab, everything disappears.</p>
         </div>
-        
-        <!-- Tabs -->
-        <div class="tabs">
-            <div class="tab active" onclick="switchTab('text')">📝 Text</div>
-            <div class="tab" onclick="switchTab('pdf')">📄 PDF Redact</div>
+      </div>
+
+      <div class="card offline-card">
+        <div class="card-header"><h2>Use Scrambler Offline</h2></div>
+        <div class="card-body">
+          <p class="hint">With the offline copy there is no server involved at all, so a cautious user can satisfy themselves that nothing they paste can go anywhere. It covers text masking only, because PDF redaction needs the server.</p>
+          <a id="offline-link" href="/scrambler-offline.html" download class="btn btn-ghost btn-sm">Download offline version</a>
         </div>
-        
-        <!-- TEXT TAB -->
-        <div id="text-tab" class="tab-content active">
-            <div class="security-notice">
-                <div class="icon">🔒</div>
-                <div>
-                    <h4>100% Private — Browser-Only Processing</h4>
-                    <p>Text masking happens entirely in your browser. Nothing is sent to any server. When you close this tab, everything disappears.</p>
-                </div>
-            </div>
-            
-            <div class="how-it-works">
-                <h3>📋 How It Works</h3>
-                <div class="steps">
-                    <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Paste & Mask</strong> — Auto-detects SSNs, emails, phones, IPs, dates.</div></div>
-                    <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Copy to LLM</strong> — Masked text is safe to share.</div></div>
-                    <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Unmask Response</strong> — Restore original values.</div></div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-header"><h2>① Paste Your Sensitive Text</h2></div>
-                <div class="card-body">
-                    <textarea id="input-text" placeholder="Paste text containing sensitive data..."></textarea>
-                    <div style="display:flex;gap:.75rem;margin-top:1rem;align-items:center;flex-wrap:wrap">
-                        <button class="btn btn-primary" onclick="maskText()">🔒 Mask Sensitive Data</button>
-                        <span style="color:var(--text-muted);font-size:.8rem">Auto-detects: SSN, Email, Phone, IP, DOB, MRN</span>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card" id="detected-card" style="display:none">
-                <div class="card-header"><h2>🔍 Detected & Replaced <span class="badge badge-count" id="detected-count">0</span></h2></div>
-                <div class="card-body">
-                    <div id="detected-list"></div>
-                    <div class="manual-add">
-                        <input type="text" id="manual-value" placeholder="Add name, company, or other...">
-                        <select id="manual-type"><option value="name">Name</option><option value="company">Company</option><option value="email">Email</option><option value="phone">Phone</option><option value="address">Address</option><option value="text">Other</option></select>
-                        <button class="btn btn-ghost btn-sm" onclick="addManual()">+ Add</button>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="card" id="masked-card" style="display:none">
-                <div class="card-header"><h2>② Copy This to Your LLM ✅</h2><button class="btn btn-success btn-sm" onclick="copyMasked()">📋 Copy</button></div>
-                <div class="card-body"><textarea id="masked-text" readonly></textarea></div>
-            </div>
-            
-            <div class="arrow-divider" id="arrow-divider" style="display:none">⬇️ Paste response below ⬇️</div>
-            
-            <div class="card" id="response-card" style="display:none">
-                <div class="card-header"><h2>③ Paste LLM Response</h2></div>
-                <div class="card-body">
-                    <textarea id="llm-response" placeholder="Paste the AI's response here..."></textarea>
-                    <button class="btn btn-success" style="margin-top:1rem" onclick="unmaskText()">🔓 Unmask</button>
-                </div>
-            </div>
-            
-            <div class="card" id="final-card" style="display:none">
-                <div class="card-header"><h2>④ Restored Text ✅</h2><button class="btn btn-primary btn-sm" onclick="copyFinal()">📋 Copy</button></div>
-                <div class="card-body"><textarea id="final-text" readonly></textarea></div>
-            </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2>① Paste Your Sensitive Text</h2></div>
+        <div class="card-body">
+          <label for="input-text" class="sr-only">Sensitive text to mask</label>
+          <textarea id="input-text" placeholder="Paste text containing sensitive data..." aria-describedby="input-hint"></textarea>
+          <p id="input-hint" class="hint">Auto-detects: SSN, Email, Phone, IP, DOB, MRN, Account, Credit Card, Driver's License</p>
+
+          <div id="text-status" class="status-region hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+          <div class="action-row">
+            <button id="mask-btn" class="btn btn-primary" aria-label="Mask sensitive data in the text"><span aria-hidden="true">🔒</span> Mask Sensitive Data</button>
+            <span class="hint-inline">All processing happens locally.</span>
+          </div>
         </div>
-        
-        <!-- PDF TAB -->
-        <div id="pdf-tab" class="tab-content">
-            <div class="security-notice">
-                <div class="icon">🔒</div>
-                <div>
-                    <h4>Ephemeral Processing — No Storage</h4>
-                    <p>PDFs are processed on the server but <strong>never stored</strong>. Files exist only in memory during processing and are immediately deleted. No logs, no database, no traces. Max 5 concurrent sessions, 10MB limit.</p>
-                </div>
+      </div>
+
+      <div class="card" id="config-card">
+        <div class="card-header"><h2>Configure Masking</h2></div>
+        <div class="card-body">
+          <div class="config-section">
+            <h3>Presets</h3>
+            <div class="preset-row" id="preset-row">
+              <button type="button" class="btn btn-ghost btn-sm preset" data-preset="everything">Everything</button>
+              <button type="button" class="btn btn-ghost btn-sm preset" data-preset="technical">Technical documentation</button>
+              <button type="button" class="btn btn-ghost btn-sm preset" data-preset="medical">Medical records</button>
             </div>
-            
-            <div class="how-it-works">
-                <h3>📋 How PDF Redaction Works</h3>
-                <div class="steps">
-                    <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Upload PDF</strong> — Drag & drop or click to select.</div></div>
-                    <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Auto-Redact</strong> — Detects SSN, email, phone, DOB, MRN, etc.</div></div>
-                    <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Download</strong> — Get clean PDF with PII replaced.</div></div>
-                </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Detection Types</h3>
+            <div class="config-grid" id="toggle-container"></div>
+          </div>
+
+          <div class="config-section">
+            <h3>Always Mask <span class="hint-inline">(inclusions — override pattern detection, but exclusions take precedence)</span></h3>
+            <div class="list-add-row">
+              <label for="always-add-input" class="sr-only">Term to always mask</label>
+              <input type="text" id="always-add-input" placeholder="Name, codename, hostname, system...">
+              <label for="always-add-type" class="sr-only">Replacement type</label>
+              <select id="always-add-type">
+                <option value="name">Name</option>
+                <option value="company">Company</option>
+                <option value="generic">Generic</option>
+              </select>
+              <button id="always-add-btn" type="button" class="btn btn-primary btn-sm">Add</button>
             </div>
-            
-            <div class="card">
-                <div class="card-header"><h2>📄 Upload PDF to Redact</h2><span id="pdf-slots" style="font-size:.8rem;color:var(--text-dim)"></span></div>
-                <div class="card-body">
-                    <!-- Redaction Style Selector -->
-                    <div style="margin-bottom:1.25rem;padding:1rem;background:rgba(0,0,0,.2);border-radius:8px">
-                        <div style="font-size:.85rem;color:var(--text-dim);margin-bottom:.75rem">Redaction Style:</div>
-                        <div style="display:flex;gap:1rem;flex-wrap:wrap">
-                            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
-                                <input type="radio" name="redact-style" value="text" checked style="accent-color:var(--blue)">
-                                <span style="font-size:.9rem"><strong>[REDACTED]</strong> — Text label</span>
-                            </label>
-                            <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
-                                <input type="radio" name="redact-style" value="blackbox" style="accent-color:var(--blue)">
-                                <span style="font-size:.9rem"><strong>[________]</strong> — Redaction bar</span>
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('pdf-input').click()">
-                        <input type="file" id="pdf-input" accept=".pdf,application/pdf">
-                        <div class="drop-zone-icon">📄</div>
-                        <div class="drop-zone-text">Drop PDF here or click to upload</div>
-                        <div class="drop-zone-hint">Max 10MB • PDF files only</div>
-                    </div>
-                    
-                    <div id="pdf-processing" style="display:none;margin-top:1rem">
-                        <div class="pdf-status processing"><span class="spinner"></span> Processing PDF...</div>
-                    </div>
-                </div>
+            <ul id="always-list" class="term-list"></ul>
+          </div>
+
+          <div class="config-section">
+            <h3>Never Mask <span class="hint-inline">(exclusions — take precedence over pattern detection and always-mask)</span></h3>
+            <div class="list-add-row">
+              <label for="never-add-input" class="sr-only">Term to never mask</label>
+              <input type="text" id="never-add-input" placeholder="Example address, support email, version string...">
+              <button id="never-add-btn" type="button" class="btn btn-primary btn-sm">Add</button>
             </div>
-            
-            <div class="card" id="pdf-result-card" style="display:none">
-                <div class="card-header"><h2>✅ Redaction Complete</h2><button class="btn btn-success" onclick="downloadPdf()">⬇️ Download Redacted PDF</button></div>
-                <div class="card-body">
-                    <div class="pdf-results">
-                        <div class="pdf-stat"><span class="pdf-stat-label">Original Pages</span><span class="pdf-stat-value" id="pdf-orig-pages">-</span></div>
-                        <div class="pdf-stat"><span class="pdf-stat-label">Output Pages</span><span class="pdf-stat-value" id="pdf-new-pages">-</span></div>
-                        <div class="pdf-stat"><span class="pdf-stat-label">Items Redacted</span><span class="pdf-stat-value" id="pdf-redacted-count">-</span></div>
-                    </div>
-                    <div id="pdf-detections" class="detected-list" style="display:none;margin-top:1rem"></div>
-                </div>
-            </div>
+            <ul id="never-list" class="term-list"></ul>
+          </div>
+
+          <div class="config-section persist-section">
+            <label class="checkbox-label">
+              <input type="checkbox" id="remember-terms">
+              <span>Remember my custom terms on this device</span>
+            </label>
+            <p id="remember-hint" class="hint">This stores your always-mask and never-mask lists in the browser's localStorage. It is off by default because those lists often contain the very secrets Scrambler exists to protect.</p>
+          </div>
         </div>
-    </main>
-    
-    <footer>
-        Part of <a href="https://scottslab.io">Scott's Lab</a> — Built with privacy in mind<br>
-        <a href="https://scottslab.io/posts/scrambler-anonymize-data-llms" target="_blank">📖 How to use Scrambler</a>
-    </footer>
-    
-    <script>
-        // =====================================================
-        // TEXT MASKING - 100% CLIENT-SIDE
-        // =====================================================
-        
-        let mappings = [];
-        let counters = {};
-        let pdfBase64 = null;
-        
-        const FAKE = {
-            companies: ['Contoso', 'Fabrikam', 'Northwind', 'Adventure Works', 'Woodgrove', 'Tailspin'],
-            firstNames: ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Riley', 'Quinn', 'Avery'],
-            lastNames: ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Miller', 'Davis', 'Wilson'],
-            domains: ['contoso.com', 'fabrikam.com', 'example.org', 'test.net'],
-            streets: ['Main St', 'Oak Ave', 'Elm Dr', 'Park Blvd', 'Cedar Ln'],
-            cities: ['Springfield', 'Riverside', 'Fairview', 'Madison', 'Georgetown']
-        };
-        
-        function getNext(type) { if (!counters[type]) counters[type] = 0; return counters[type]++; }
-        
-        function generateFake(type) {
-            switch(type) {
-                case 'email': return `${FAKE.firstNames[getNext('fn') % FAKE.firstNames.length].toLowerCase()}.${FAKE.lastNames[getNext('ln') % FAKE.lastNames.length].toLowerCase()}@${FAKE.domains[getNext('dom') % FAKE.domains.length]}`;
-                case 'phone': return `(555) ${String(100 + getNext('p1') % 900).padStart(3,'0')}-${String(1000 + getNext('p2') % 9000).padStart(4,'0')}`;
-                case 'ssn': return `XXX-XX-${String(1000 + getNext('ssn') % 9000)}`;
-                case 'name': return `${FAKE.firstNames[getNext('n1') % FAKE.firstNames.length]} ${FAKE.lastNames[getNext('n2') % FAKE.lastNames.length]}`;
-                case 'company': return FAKE.companies[getNext('co') % FAKE.companies.length];
-                case 'address': return `${100 + getNext('addr') % 900} ${FAKE.streets[getNext('st') % FAKE.streets.length]}, ${FAKE.cities[getNext('ct') % FAKE.cities.length]}`;
-                case 'ip': return `10.${getNext('ip1') % 256}.${getNext('ip2') % 256}.${getNext('ip3') % 256}`;
-                case 'dob': return `XX/XX/${1950 + getNext('dob') % 50}`;
-                case 'mrn': return `MRN-${100000 + getNext('mrn') % 900000}`;
-                case 'account': return `ACCT-${String(getNext('acct')).padStart(6, '0')}`;
-                default: return `[REDACTED-${Math.random().toString(36).substr(2,4).toUpperCase()}]`;
-            }
-        }
-        
-        const PATTERNS = [
-            { type: 'ssn', regex: /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, label: 'SSN' },
-            { type: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, label: 'Email' },
-            { type: 'phone', regex: /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, label: 'Phone' },
-            { type: 'ip', regex: /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g, label: 'IP' },
-            { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, label: 'DOB' },
-            { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
-            { type: 'account', regex: /\b(?:account|acct|patient id|member id|policy)[:\s#]*\d{4,12}\b/gi, label: 'Account' },
-        ];
-        
-        function maskText() {
-            const text = document.getElementById('input-text').value.trim();
-            if (!text) return alert('Please paste some text first');
-            counters = {};
-            let result = text;
-            for (const pattern of PATTERNS) {
-                const matches = text.match(pattern.regex) || [];
-                for (const match of [...new Set(matches)]) {
-                    if (!mappings.find(m => m.original === match)) {
-                        mappings.push({ id: Math.random().toString(36).substr(2,9), original: match, masked: generateFake(pattern.type), type: pattern.label });
-                    }
-                }
-            }
-            const sorted = [...mappings].sort((a, b) => b.original.length - a.original.length);
-            for (const m of sorted) result = result.split(m.original).join(m.masked);
-            document.getElementById('masked-text').value = result;
-            document.getElementById('masked-card').style.display = 'block';
-            document.getElementById('arrow-divider').style.display = 'flex';
-            document.getElementById('response-card').style.display = 'block';
-            renderDetected();
-        }
-        
-        function renderDetected() {
-            const card = document.getElementById('detected-card');
-            if (mappings.length === 0) { card.style.display = 'none'; return; }
-            card.style.display = 'block';
-            document.getElementById('detected-count').textContent = mappings.length;
-            document.getElementById('detected-list').innerHTML = mappings.map(m => `
-                <div class="detected-item">
-                    <span class="detected-type">${m.type}</span>
-                    <span class="detected-original">${esc(m.original)}</span>
-                    <span class="detected-arrow">→</span>
-                    <span class="detected-masked">${esc(m.masked)}</span>
-                    <button class="detected-delete" onclick="deleteMapping('${m.id}')">×</button>
-                </div>
-            `).join('');
-        }
-        
-        function addManual() {
-            const value = document.getElementById('manual-value').value.trim();
-            const type = document.getElementById('manual-type').value;
-            if (!value) return;
-            if (!mappings.find(m => m.original === value)) {
-                mappings.push({ id: Math.random().toString(36).substr(2,9), original: value, masked: generateFake(type), type: type.charAt(0).toUpperCase() + type.slice(1) });
-            }
-            document.getElementById('manual-value').value = '';
-            maskText();
-        }
-        
-        function deleteMapping(id) {
-            mappings = mappings.filter(m => m.id !== id);
-            renderDetected();
-            if (document.getElementById('input-text').value.trim()) {
-                let result = document.getElementById('input-text').value;
-                for (const m of [...mappings].sort((a, b) => b.original.length - a.original.length)) result = result.split(m.original).join(m.masked);
-                document.getElementById('masked-text').value = result;
-            }
-        }
-        
-        function unmaskText() {
-            const text = document.getElementById('llm-response').value.trim();
-            if (!text) return alert('Please paste the LLM response first');
-            let result = text;
-            for (const m of [...mappings].sort((a, b) => b.masked.length - a.masked.length)) result = result.split(m.masked).join(m.original);
-            document.getElementById('final-text').value = result;
-            document.getElementById('final-card').style.display = 'block';
-        }
-        
-        function copyMasked() { navigator.clipboard.writeText(document.getElementById('masked-text').value); alert('Copied!'); }
-        function copyFinal() { navigator.clipboard.writeText(document.getElementById('final-text').value); alert('Copied!'); }
-        
-        function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
-        
-        // =====================================================
-        // PDF REDACTION - SERVER-SIDE (EPHEMERAL)
-        // =====================================================
-        
-        async function checkPdfStatus() {
-            try {
-                const res = await fetch('/api/pdf/status');
-                const data = await res.json();
-                document.getElementById('pdf-slots').textContent = `${data.available}/${data.maxSessions} slots available`;
-            } catch (e) { console.error('Status check failed'); }
-        }
-        
-        async function processPdf(file) {
-            if (file.size > 10 * 1024 * 1024) return alert('File too large. Max 10MB.');
-            if (file.type !== 'application/pdf') return alert('Only PDF files allowed.');
-            
-            document.getElementById('pdf-processing').style.display = 'block';
-            document.getElementById('pdf-result-card').style.display = 'none';
-            
-            // Get selected redaction style
-            const style = document.querySelector('input[name="redact-style"]:checked')?.value || 'text';
-            
-            const formData = new FormData();
-            formData.append('pdf', file);
-            formData.append('style', style);
-            
-            try {
-                const res = await fetch('/api/pdf/analyze', { method: 'POST', body: formData });
-                if (!res.ok) {
-                    const err = await res.json();
-                    throw new Error(err.error || 'Processing failed');
-                }
-                const data = await res.json();
-                pdfBase64 = data.pdfBase64;
-                
-                document.getElementById('pdf-orig-pages').textContent = data.originalPageCount;
-                document.getElementById('pdf-new-pages').textContent = data.newPageCount;
-                document.getElementById('pdf-redacted-count').textContent = data.detections.length;
-                
-                if (data.detections.length > 0) {
-                    document.getElementById('pdf-detections').style.display = 'block';
-                    document.getElementById('pdf-detections').innerHTML = '<h4 style="margin-bottom:.5rem;color:var(--text-dim)">Items Redacted:</h4>' + 
-                        data.detections.slice(0, 20).map(d => `<div class="detected-item"><span class="detected-type">${d.type}</span><span class="detected-original">${esc(d.original)}</span><span class="detected-arrow">→</span><span class="detected-masked">${esc(d.redacted)}</span></div>`).join('') +
-                        (data.detections.length > 20 ? `<div style="color:var(--text-muted);padding:.5rem 0">... and ${data.detections.length - 20} more</div>` : '');
-                } else {
-                    document.getElementById('pdf-detections').style.display = 'none';
-                }
-                
-                document.getElementById('pdf-result-card').style.display = 'block';
-            } catch (e) {
-                alert('Error: ' + e.message);
-            } finally {
-                document.getElementById('pdf-processing').style.display = 'none';
-            }
-        }
-        
-        function downloadPdf() {
-            if (!pdfBase64) return alert('No PDF to download');
-            const link = document.createElement('a');
-            link.href = 'data:application/pdf;base64,' + pdfBase64;
-            link.download = `redacted-${Date.now()}.pdf`;
-            link.click();
-        }
-        
-        // Tab switching
-        function switchTab(tab) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            document.querySelector(`.tab:nth-child(${tab === 'text' ? 1 : 2})`).classList.add('active');
-            document.getElementById(tab + '-tab').classList.add('active');
-            if (tab === 'pdf') checkPdfStatus();
-        }
-        
-        function newSession() {
-            if ((mappings.length > 0 || pdfBase64) && !confirm('Start over? This will clear everything.')) return;
-            mappings = []; counters = {}; pdfBase64 = null;
-            document.getElementById('input-text').value = '';
-            document.getElementById('masked-text').value = '';
-            document.getElementById('llm-response').value = '';
-            document.getElementById('final-text').value = '';
-            ['detected-card','masked-card','arrow-divider','response-card','final-card','pdf-result-card'].forEach(id => document.getElementById(id).style.display = 'none');
-        }
-        
-        // Drag & drop
-        const dropZone = document.getElementById('drop-zone');
-        const pdfInput = document.getElementById('pdf-input');
-        
-        dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); if (e.dataTransfer.files[0]) processPdf(e.dataTransfer.files[0]); });
-        pdfInput.addEventListener('change', e => { if (e.target.files[0]) processPdf(e.target.files[0]); });
-        
-        document.getElementById('manual-value').addEventListener('keypress', e => { if(e.key === 'Enter') addManual(); });
-    </script>
+      </div>
+
+      <div class="card hidden" id="detected-card">
+        <div class="card-header"><h2>Detected &amp; Replaced <span class="badge badge-count" id="detected-count">0</span></h2></div>
+        <div class="card-body">
+          <ul id="detected-list" class="detected-list"></ul>
+        </div>
+      </div>
+
+      <div class="card hidden" id="masked-card">
+        <div class="card-header"><h2>② Copy This to Your LLM</h2><button id="copy-masked-btn" class="btn btn-success btn-sm"><span aria-hidden="true">📋</span> Copy</button></div>
+        <div class="card-body">
+          <label for="masked-text" class="sr-only">Masked text</label>
+          <textarea id="masked-text" readonly></textarea>
+        </div>
+      </div>
+
+      <div class="arrow-divider hidden" id="arrow-divider" aria-hidden="true">⬇️ Paste response below ⬇️</div>
+
+      <div class="card hidden" id="response-card">
+        <div class="card-header"><h2>③ Paste LLM Response</h2></div>
+        <div class="card-body">
+          <label for="llm-response" class="sr-only">LLM response to unmask</label>
+          <textarea id="llm-response" placeholder="Paste the AI's response here..."></textarea>
+          <button id="unmask-btn" class="btn btn-success" aria-label="Restore original values in the LLM response"><span aria-hidden="true">🔓</span> Unmask</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="final-card">
+        <div class="card-header"><h2>④ Restored Text</h2><button id="copy-final-btn" class="btn btn-primary btn-sm"><span aria-hidden="true">📋</span> Copy</button></div>
+        <div class="card-body">
+          <label for="final-text" class="sr-only">Restored text</label>
+          <textarea id="final-text" readonly></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section id="pdf-tab" class="tab-content" role="tabpanel" aria-labelledby="tab-pdf">
+      <div class="security-notice">
+        <div class="icon" aria-hidden="true">🔒</div>
+        <div>
+          <h2>Ephemeral Processing — Uploaded Only for Redaction</h2>
+          <p>PDFs are uploaded to the server for processing and are <strong>not retained</strong>. The file exists only in memory for the moment it takes to redact it, then the buffer is cleared. No persistent storage, no logs of content, no database.</p>
+        </div>
+      </div>
+
+      <div class="how-it-works">
+        <h3>How PDF Redaction Works</h3>
+        <div class="steps">
+          <div class="step"><div class="step-num">1</div><div class="step-text"><strong>Upload PDF</strong> — Drag &amp; drop or click to select.</div></div>
+          <div class="step"><div class="step-num">2</div><div class="step-text"><strong>Auto-Redact</strong> — Detects SSN, email, phone, DOB, MRN, etc.</div></div>
+          <div class="step"><div class="step-num">3</div><div class="step-text"><strong>Download</strong> — Get a clean PDF with PII replaced.</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h2>Upload PDF to Redact</h2><span id="pdf-slots" class="hint-inline"></span></div>
+        <div class="card-body">
+          <fieldset class="style-fieldset">
+            <legend>Redaction Style</legend>
+            <label class="radio-label">
+              <input type="radio" name="redact-style" value="text" checked>
+              <span><strong>[REDACTED]</strong> — Text label</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="redact-style" value="blackbox">
+              <span><strong>[________]</strong> — Redaction bar</span>
+            </label>
+          </fieldset>
+
+          <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="Choose a PDF file to upload. You can also drag and drop a file here.">
+            <input type="file" id="pdf-input" class="visually-hidden" accept=".pdf,application/pdf" tabindex="-1" aria-hidden="true">
+            <div class="drop-zone-icon" aria-hidden="true">📄</div>
+            <div class="drop-zone-text">Drop PDF here or click to upload</div>
+            <div class="drop-zone-hint">Max 10MB • PDF files only</div>
+          </div>
+
+          <div id="pdf-processing" class="status-region processing hidden" role="status" aria-live="polite" aria-atomic="true">
+            <span class="spinner" aria-hidden="true"></span>
+            <span>Processing PDF...</span>
+          </div>
+          <div id="pdf-status" class="status-region hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="pdf-result-card">
+        <div class="card-header"><h2>Redaction Complete</h2><button id="download-pdf-btn" class="btn btn-success" aria-label="Download the redacted PDF"><span aria-hidden="true">⬇️</span> Download Redacted PDF</button></div>
+        <div class="card-body">
+          <div class="pdf-results">
+            <div class="pdf-stat"><span class="pdf-stat-label">Original Pages</span><span class="pdf-stat-value" id="pdf-orig-pages">-</span></div>
+            <div class="pdf-stat"><span class="pdf-stat-label">Output Pages</span><span class="pdf-stat-value" id="pdf-new-pages">-</span></div>
+            <div class="pdf-stat"><span class="pdf-stat-label">Items Redacted</span><span class="pdf-stat-value" id="pdf-redacted-count">-</span></div>
+          </div>
+          <ul id="pdf-detections" class="detected-list hidden"></ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Part of <a href="https://scottslab.io">Scott's Lab</a> — Built with privacy in mind</p>
+    <p><a href="https://scottslab.io/posts/scrambler-anonymize-data-llms" target="_blank">How to use Scrambler</a></p>
+  </footer>
+
+  <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <script src="/app.js"></script>
 </body>
 </html>
