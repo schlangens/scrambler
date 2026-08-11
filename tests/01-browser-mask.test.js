@@ -29,6 +29,11 @@ describe('Browser-side text masking', () => {
     assert.ok(mappings.some((m) => m.type === 'Email' || m.type === 'email'), 'Expected an email mapping');
     assert.ok(mappings.some((m) => m.type === 'Phone' || m.type === 'phone'), 'Expected a phone mapping');
     assert.ok(mappings.some((m) => m.type === 'IP' || m.type === 'ip'), 'Expected an IP mapping');
+    assert.ok(mappings.some((m) => m.type === 'DOB' || m.type === 'dob'), 'Expected a DOB mapping');
+    assert.ok(mappings.some((m) => m.type === 'MRN' || m.type === 'mrn'), 'Expected an MRN mapping');
+    assert.ok(mappings.some((m) => m.type === 'Account' || m.type === 'account'), 'Expected an account mapping');
+    assert.ok(mappings.some((m) => m.type === 'CC' || m.type === 'cc' || m.type === 'Credit Card' || m.type === 'creditCard'), 'Expected a credit card mapping');
+    assert.ok(mappings.some((m) => m.type === 'DL' || m.type === 'dl' || m.type === "Driver's License" || m.type === 'driversLicense'), 'Expected a driver license mapping');
   });
 
   it('is consistent: the same input maps to the same fake values within one session', () => {

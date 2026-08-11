@@ -41,11 +41,13 @@ print(len(doc))
 // Create an encrypted/password-protected PDF.
 function createEncryptedPdf() {
   const pythonCode = `
-import fitz, sys
+import fitz, sys, io
 doc = fitz.open()
 page = doc.new_page(width=612, height=792)
 page.insert_text((72, 72), "Secret.", fontsize=12)
-doc.save(sys.stdout.buffer, encryption=fitz.PDF_ENCRYPT_AES_256, owner_pw="owner", user_pw="user")
+buf = io.BytesIO()
+doc.save(buf, encryption=fitz.PDF_ENCRYPT_AES_256, owner_pw="owner", user_pw="user")
+sys.stdout.buffer.write(buf.getvalue())
 `;
   return runPython(pythonCode, []);
 }

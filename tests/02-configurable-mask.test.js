@@ -43,10 +43,7 @@ describe('Configurable masking', () => {
   it('each preset produces the type configuration it claims to', () => {
     const app = loadApp();
     const presets = app.getPresets();
-    if (!presets) {
-      // Presets may not be exposed as a property; test passes if the API is absent.
-      return;
-    }
+    assert.ok(presets && Object.keys(presets).length > 0, 'Masking module should expose one or more presets');
     for (const [name, preset] of Object.entries(presets)) {
       assert.ok(preset && typeof preset === 'object', `Preset ${name} should be an object`);
       app.configure({ preset: name });
