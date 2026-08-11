@@ -9,7 +9,7 @@ describe('Abuse and robustness', () => {
   let server;
 
   before(async () => {
-    server = await startServer({ port: 3059 });
+    server = await startServer();
   });
 
   after(async () => {

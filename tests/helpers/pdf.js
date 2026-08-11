@@ -52,6 +52,20 @@ sys.stdout.buffer.write(buf.getvalue())
   return runPython(pythonCode, []);
 }
 
+// Create a PDF page with vector drawings but no text.
+function createImageOnlyPdf() {
+  const pythonCode = `
+import fitz, sys
+doc = fitz.open()
+page = doc.new_page(width=612, height=792)
+# Vector drawing: a red rectangle and a blue circle.
+page.draw_rect(fitz.Rect(72, 72, 200, 200), color=(1, 0, 0), fill=(1, 0, 0))
+page.draw_circle((300, 150), 50, color=(0, 0, 1), fill=(0, 0, 1))
+sys.stdout.buffer.write(doc.tobytes())
+`;
+  return runPython(pythonCode, []);
+}
+
 function runPython(code, args) {
   return new Promise((resolve, reject) => {
     const child = spawn('python3', ['-c', code, ...args], { env: { ...process.env, PYMUPDF_MESSAGE: 'fd:2' } });
@@ -86,4 +100,5 @@ module.exports = {
   extractText,
   countPages,
   createEncryptedPdf,
+  createImageOnlyPdf,
 };

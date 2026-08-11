@@ -19,6 +19,8 @@ function listFiles(dir) {
   }
 }
 
+const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'coverage']);
+
 function findDbFiles(dir) {
   const found = [];
   function walk(current) {
@@ -31,7 +33,7 @@ function findDbFiles(dir) {
     for (const entry of entries) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
-        walk(full);
+        if (!EXCLUDED_DIRS.has(entry.name)) walk(full);
       } else if (/\.(db|sqlite|sqlite3)$/i.test(entry.name)) {
         found.push(full);
       }
@@ -54,7 +56,7 @@ describe('Nothing is stored on the server', () => {
   let server;
 
   before(async () => {
-    server = await startServer({ port: 3057 });
+    server = await startServer();
   });
 
   after(async () => {

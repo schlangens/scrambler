@@ -1,14 +1,14 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const { startServer, stopServer, request, buildMultipart } = require('./helpers/server');
-const { createPiiPdf, extractText, countPages } = require('./helpers/pdf');
+const { createPiiPdf, extractText, countPages, createImageOnlyPdf } = require('./helpers/pdf');
 const { pdfDetectableValues } = require('./fixtures');
 
 describe('PDF redaction end to end', () => {
   let server;
 
   before(async () => {
-    server = await startServer({ port: 3058 });
+    server = await startServer();
   });
 
   after(async () => {
@@ -63,5 +63,18 @@ describe('PDF redaction end to end', () => {
     for (const value of pdfDetectableValues()) {
       assert.ok(!text.includes(value), `Analyze PDF base64 text layer still contains PII: ${value}`);
     }
+  });
+
+  it('flags image-only pages as unchecked in the analyze response', async () => {
+    const pdf = await createImageOnlyPdf();
+    const payload = buildMultipart({}, 'pdf', 'image-only.pdf', pdf);
+    const res = await request({ method: 'POST', path: '/api/pdf/analyze', port: server.port, body: payload.buffer, headers: payload.headers });
+
+    assert.strictEqual(res.status, 200, `Image-only PDF should not be rejected: ${res.text}`);
+    const data = JSON.parse(res.text);
+    assert.strictEqual(data.success, true);
+    const uncheckedPages = data.uncheckedPages || data.pagesWithoutText;
+    assert.ok(Array.isArray(uncheckedPages), 'Response should include an uncheckedPages / pagesWithoutText array');
+    assert.ok(uncheckedPages.includes(1), 'Page 1 should be flagged as unchecked (no readable text)');
   });
 });
