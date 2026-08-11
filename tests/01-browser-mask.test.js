@@ -1,0 +1,81 @@
+const { describe, it } = require('node:test');
+const assert = require('node:assert');
+const { loadApp } = require('./helpers/app-loader');
+const { SYNTHETIC_PII, FALSE_POSITIVES, sampleParagraph } = require('./fixtures');
+
+describe('Browser-side text masking', () => {
+  it('loads the masking source (public/app.js preferred, inline fallback)', () => {
+    const app = loadApp();
+    assert(app.exists, 'No masking source found (expected public/app.js or inline script in public/index.html)');
+    assert(['app.js', 'inline', 'offline'].includes(app.source), `Unexpected source: ${app.source}`);
+  });
+
+  it('masks every supported PII type and removes the original values', () => {
+    const app = loadApp();
+    const input = sampleParagraph();
+    const { text, mappings } = app.mask(input);
+
+    assert.strictEqual(app.networkCalls.length, 0, 'Masking must not make any network request');
+    assert.ok(text.length > 0, 'Masked text should not be empty');
+
+    const originals = mappings.map((m) => m.original);
+    for (const value of originals) {
+      assert.ok(!text.includes(value), `Masked output still contains original value: ${value}`);
+    }
+
+    // Specific supported types.
+    assert.ok(text.includes('SSN:'), 'Expected SSN label to remain in output');
+    assert.ok(mappings.some((m) => m.type === 'SSN' || m.type === 'ssn'), 'Expected an SSN mapping');
+    assert.ok(mappings.some((m) => m.type === 'Email' || m.type === 'email'), 'Expected an email mapping');
+    assert.ok(mappings.some((m) => m.type === 'Phone' || m.type === 'phone'), 'Expected a phone mapping');
+    assert.ok(mappings.some((m) => m.type === 'IP' || m.type === 'ip'), 'Expected an IP mapping');
+  });
+
+  it('is consistent: the same input maps to the same fake values within one session', () => {
+    const app = loadApp();
+    const input = `SSN: ${SYNTHETIC_PII.ssn}, Email: ${SYNTHETIC_PII.email}`;
+    const first = app.mask(input).text;
+    const second = app.mask(input).text;
+    assert.strictEqual(first, second, 'Masking should be deterministic for identical input in the same session');
+  });
+
+  it('unmasks restored text exactly', () => {
+    const app = loadApp();
+    const input = sampleParagraph();
+    const { text: masked, mappings } = app.mask(input);
+    const restored = app.unmask(masked, mappings);
+    assert.strictEqual(restored, input, 'Unmasking should restore the original text exactly');
+  });
+
+  it('handles overlapping and adjacent matches without corrupting surrounding text', () => {
+    const app = loadApp();
+    const input = `A: ${SYNTHETIC_PII.email} B: ${SYNTHETIC_PII.email} C: ${SYNTHETIC_PII.phone}`;
+    const { text: masked, mappings } = app.mask(input);
+    const restored = app.unmask(masked, mappings);
+    assert.strictEqual(restored, input);
+    assert.ok(!masked.includes(SYNTHETIC_PII.email), 'Original email should be removed');
+    assert.ok(!masked.includes(SYNTHETIC_PII.phone), 'Original phone should be removed');
+  });
+
+  it('passes non-PII text through unchanged', () => {
+    const app = loadApp();
+    const input = 'The quick brown fox jumps over the lazy dog. Version 1.2.3 is stable.';
+    const { text, mappings } = app.mask(input);
+    assert.strictEqual(text, input);
+    assert.strictEqual(mappings.length, 0);
+  });
+
+  it('does not treat false-positive traps as PII', () => {
+    const app = loadApp();
+    const input = [
+      FALSE_POSITIVES.ordinaryLongNumber,
+      FALSE_POSITIVES.versionString,
+      FALSE_POSITIVES.notDob,
+      FALSE_POSITIVES.notMrn,
+      FALSE_POSITIVES.notAccount,
+    ].join(' ');
+    const { text, mappings } = app.mask(input);
+    assert.strictEqual(text, input, 'False-positive traps should pass through unchanged');
+    assert.strictEqual(mappings.length, 0, 'False-positive traps should produce no mappings');
+  });
+});
