@@ -136,23 +136,22 @@ function parseFramedResponse(buffer) {
 function runPythonRedactor(pdfBuffer, style) {
   return new Promise((resolve, reject) => {
     const child = spawn("python3", [REDACT_SCRIPT, style], {
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "ignore"],
     });
 
     const stdoutChunks = [];
-    const stderrChunks = [];
     let timedOut = false;
 
     child.stdout.on("data", (chunk) => stdoutChunks.push(chunk));
-    child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+
+    // Stderr is ignored (not piped) to avoid accidentally logging PII.
+    // Python writes all structured output (including errors) to stdout
+    // using the framing protocol. Unexpected stderr content is not
+    // surfaced to the user.
 
     // Swallow stdin errors (e.g. EPIPE) - the close handler will surface the
     // real failure or timeout and avoid an unhandled exception.
     child.stdin.on("error", () => {});
-
-    // Stderr is ignored to avoid accidentally logging PII.  Python writes
-    // all structured output (including errors) to stdout using the framing
-    // protocol.  Unexpected stderr content is not surfaced to the user.
 
     const inputHeader = Buffer.alloc(8);
     inputHeader.writeBigUInt64BE(BigInt(pdfBuffer.length));
@@ -241,6 +240,8 @@ async function processPdf(pdfBuffer, style = "text") {
       originalPageCount: response.meta.originalPageCount,
       newPageCount: response.meta.newPageCount,
       detections: response.meta.detections || [],
+      pagesWithoutText: response.meta.pagesWithoutText || [],
+      hasUncheckedPages: Boolean(response.meta.hasUncheckedPages),
       charCount: response.meta.charCount,
       redactedCharCount: response.meta.redactedCharCount,
       style: cleanStyle,

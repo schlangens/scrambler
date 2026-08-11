@@ -39,6 +39,11 @@ except ImportError:  # pragma: no cover
 
 MAX_FILE_SIZE = int(os.environ.get("SCRAMBLER_MAX_FILE_SIZE", 10 * 1024 * 1024))
 
+
+class RedactionError(Exception):
+    """Known, safe error raised by this redactor; its message may be returned to the caller."""
+
+
 # PII patterns to detect and redact.  Tuple is (label, regex, replacement).
 PII_PATTERNS = [
     ("SSN", r"\b\d{3}[-.]?\d{2}[-.]?\d{4}\b", "[REDACTED]"),
@@ -90,7 +95,7 @@ def _read_exact(stream, n):
     while len(buf) < n:
         chunk = stream.read(n - len(buf))
         if not chunk:
-            raise EOFError(f"Expected {n} bytes, received {len(buf)}")
+            raise RedactionError(f"Expected {n} bytes, received {len(buf)}")
         buf += chunk
     return buf
 
@@ -100,9 +105,9 @@ def _read_length_prefixed(stream):
     length_bytes = _read_exact(stream, 8)
     length = int.from_bytes(length_bytes, "big")
     if length > MAX_FILE_SIZE:
-        raise ValueError(f"Input size {length} exceeds maximum {MAX_FILE_SIZE}")
+        raise RedactionError(f"Input size {length} exceeds maximum {MAX_FILE_SIZE}")
     if length == 0:
-        raise ValueError("Empty PDF payload")
+        raise RedactionError("Empty PDF payload")
     return _read_exact(stream, length)
 
 
@@ -119,7 +124,7 @@ def _write_response(stream, pdf_bytes, meta):
 def _validate_pdf(data):
     """Reject files that are not PDFs by checking the magic bytes."""
     if len(data) < 4 or data[:4] != b"%PDF":
-        raise ValueError("File does not appear to be a valid PDF")
+        raise RedactionError("File does not appear to be a valid PDF")
 
 
 def _normalize_token(text):
@@ -211,16 +216,27 @@ def redact_pdf(pdf_bytes, style):
 
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     if doc.needs_pass:
-        raise ValueError("Encrypted or password-protected PDFs are not supported")
+        raise RedactionError("Encrypted or password-protected PDFs are not supported")
 
     page_count = len(doc)
     detections = []
+    unchecked_pages = []
     original_char_count = 0
 
     for page_num in range(page_count):
         page = doc[page_num]
         page_text = page.get_text(flags=TEXT_FLAGS)
         original_char_count += len(page_text)
+
+        # Pages with no extractable text but containing images or vector
+        # drawings cannot be checked by this regex-based redactor. We warn
+        # the caller in the metadata but do NOT refuse the document, because
+        # image-only pages may legitimately contain no PII. This is a
+        # warn-and-inform case, distinct from the fail-closed stance for
+        # unlocatable detected PII.
+        if not page_text.strip() and (page.get_images() or page.get_drawings()):
+            unchecked_pages.append(page_num + 1)
+
         words = page.get_text("words", flags=TEXT_FLAGS)
 
         for pii_type, pattern, default_replacement in PII_PATTERNS:
@@ -229,7 +245,7 @@ def redact_pdf(pdf_bytes, style):
 
                 rects = _find_rects(page, matched_text, words)
                 if not rects:
-                    raise ValueError(
+                    raise RedactionError(
                         f"Could not locate a detected {pii_type} on page {page_num + 1}; "
                         "redaction aborted"
                     )
@@ -266,7 +282,7 @@ def redact_pdf(pdf_bytes, style):
         redacted_lower = redacted_text_total.lower()
         for detection in detections:
             if detection["original"].lower() in redacted_lower:
-                raise ValueError(
+                raise RedactionError(
                     f"Verification failed for {detection['type']} on page "
                     f"{detection['page']}; redacted text is still present"
                 )
@@ -279,6 +295,8 @@ def redact_pdf(pdf_bytes, style):
         "pageCount": page_count,
         "originalPageCount": page_count,
         "newPageCount": page_count,
+        "pagesWithoutText": unchecked_pages,
+        "hasUncheckedPages": bool(unchecked_pages),
         "charCount": original_char_count,
         "redactedCharCount": len(redacted_text_total),
     }
@@ -294,9 +312,14 @@ def main():
         pdf_bytes = _read_length_prefixed(sys.stdin.buffer)
         output_bytes, meta = redact_pdf(pdf_bytes, style)
         _write_response(sys.stdout.buffer, output_bytes, meta)
-    except Exception as exc:  # noqa: BLE001
-        # Never include matched PII in the error payload.
+    except RedactionError as exc:
+        # These are our own safe messages (type/page only, never matched text).
         error_meta = {"success": False, "error": str(exc), "detections": []}
+        _write_response(sys.stdout.buffer, b"", error_meta)
+    except Exception:
+        # Unexpected PyMuPDF / system exceptions may contain document content.
+        # Do not forward their raw text to the caller.
+        error_meta = {"success": False, "error": "Internal redaction error", "detections": []}
         _write_response(sys.stdout.buffer, b"", error_meta)
 
 
