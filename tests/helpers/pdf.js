@@ -1,6 +1,19 @@
 const { spawn } = require('child_process');
 const { pdfParagraph } = require('../fixtures');
 
+// Create a minimal PDF containing arbitrary text using PyMuPDF (fitz).
+function createTextPdf(text) {
+  const pythonCode = `
+import fitz, sys, json
+text = json.loads(sys.argv[1])
+doc = fitz.open()
+page = doc.new_page(width=612, height=792)
+page.insert_text((72, 72), text, fontsize=12)
+sys.stdout.buffer.write(doc.tobytes())
+`;
+  return runPython(pythonCode, [JSON.stringify(text)]);
+}
+
 // Create a minimal PDF containing synthetic PII text using PyMuPDF (fitz).
 function createPiiPdf() {
   const pythonCode = `
@@ -97,6 +110,7 @@ function runPythonWithInput(code, input) {
 
 module.exports = {
   createPiiPdf,
+  createTextPdf,
   extractText,
   countPages,
   createEncryptedPdf,

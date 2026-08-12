@@ -46,6 +46,7 @@ This is the section a security reviewer should read first.
   - Detection is regex-based. It will miss PII and it will over-match: invoice numbers, ticket IDs, and part numbers as driver's licences (`[A-Z]{1,3}\d{6,10}`); and any 16-digit grouped number as a credit card because there is no Luhn validation.
   - Dates of birth are only matched when a keyword such as `DOB`, `Date of Birth`, `Birth Date`, or `born` appears with a month-first date. Day-first dates (`DD/MM/YYYY`) and standalone dates are missed.
   - Specific gaps: IPv6 addresses; international and non-NANP phone numbers (for example, `+44 20 7946 0958`); passport numbers and national ID numbers of any country; and SSNs separated by spaces instead of dashes or dots.
+  - Two email addresses written without a separator (`john@x.comjane@y.com`) are matched as a single token, so the second address's local part is swallowed and `@y.com` is left behind as a visible fragment.
   - Names, company names, codenames, and hostnames cannot be reliably pattern-matched. Add them manually or use the always-mask list.
   - The AI provider still receives the masked text and any surrounding context. You are trusting them with the synthetic version.
   - The real→fake mapping lives in your browser tab. Anyone with access to your unlocked machine while the tab is open can reverse the masking.
@@ -87,7 +88,7 @@ Detection is regex-based. Text mode uses the patterns in `public/app.js`; PDF mo
 | Email | `alice.smith@contoso.com` | `marlow.quintrell@bexley-harrow.example` | `[REDACTED]` or a black bar |
 | Phone | `(555) 987-6543` | `(555) 100-1000` | `[REDACTED]` or a black bar |
 | IP address | `10.0.0.1` | `192.0.2.1` | `[REDACTED]` or a black bar |
-| Date of birth | `DOB: 11/22/1990` | `XX/XX/1950` | `[DOB REDACTED]` or a black bar |
+| Date of birth | `DOB: 11/22/1990` | `DOB: XX/XX/1950` | `[DOB REDACTED]` or a black bar |
 | MRN | `MRN: 12345678` | `MRN-100000` | `[REDACTED]` or a black bar |
 | Account / patient / member / policy ID | `Policy: 12345678` | `ACCT-100000` | `[REDACTED]` or a black bar |
 | Credit card | `5555-4444-3333-2222` | `XXXX-XXXX-XXXX-1000` | `[REDACTED]` or a black bar |
