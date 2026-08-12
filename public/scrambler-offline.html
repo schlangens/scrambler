@@ -127,22 +127,6 @@ main {
 .security-notice h2 { color: var(--green); font-size: .95rem; margin-bottom: .25rem; }
 .security-notice p { font-size: .85rem; color: var(--text-dim); line-height: 1.5; }
 .security-notice a { color: var(--blue-bright); }
-
-.how-it-works {
-  background: rgba(37,99,235,.1);
-  border: 1px solid rgba(37,99,235,.2);
-  border-radius: 10px;
-  padding: 1.25rem;
-  margin-bottom: 2rem;
-}
-.how-it-works h3 {
-  font-size: .9rem;
-  color: var(--blue-bright);
-  margin-bottom: 1rem;
-  display: flex;
-  align-items: center;
-  gap: .5rem;
-}
 .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
 .step { display: flex; align-items: flex-start; gap: .75rem; }
 .step-num {
@@ -225,16 +209,6 @@ legend { font-size: .85rem; color: var(--text-dim); margin-bottom: .75rem; }
 .radio-label input,
 .checkbox-label input { accent-color: var(--blue); cursor: pointer; }
 
-.style-fieldset {
-  margin-bottom: 1.25rem;
-  padding: 1rem;
-  background: rgba(0,0,0,.2);
-  border-radius: 8px;
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
 textarea {
   width: 100%;
   padding: 1rem;
@@ -269,33 +243,6 @@ select {
 input[type="text"]:focus-visible,
 select:focus-visible { border-color: var(--blue); outline: 2px solid var(--blue-bright); outline-offset: 2px; }
 select { background: var(--darker-blue); font-family: inherit; }
-
-.tabs {
-  display: flex;
-  gap: .5rem;
-  margin-bottom: 1.5rem;
-  border-bottom: 1px solid rgba(37,99,235,.2);
-  padding-bottom: .5rem;
-  list-style: none;
-}
-.tab {
-  padding: .75rem 1.5rem;
-  border-radius: 8px 8px 0 0;
-  cursor: pointer;
-  transition: all .15s;
-  font-weight: 500;
-  color: var(--text-dim);
-  border: 1px solid transparent;
-  border-bottom: none;
-  background: transparent;
-  font-family: inherit;
-  font-size: inherit;
-}
-.tab:hover { color: var(--text); background: rgba(37,99,235,.1); }
-.tab.active { color: var(--blue-bright); background: rgba(37,99,235,.15); border-color: rgba(37,99,235,.3); }
-.tab:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 2px; }
-.tab-content { display: none; }
-.tab-content.active { display: block; }
 
 .config-section { margin-top: 1.25rem; }
 .config-section h3 { font-size: .9rem; color: var(--text-dim); margin-bottom: .75rem; font-weight: 500; }
@@ -413,34 +360,7 @@ select { background: var(--darker-blue); font-family: inherit; }
 .status-region.success { background: rgba(34,197,94,.1); color: var(--green); border-color: rgba(34,197,94,.3); }
 .status-region.error { background: rgba(239,68,68,.1); color: var(--red); border-color: rgba(239,68,68,.3); }
 .status-region.info { background: rgba(37,99,235,.1); color: var(--blue-bright); border-color: rgba(37,99,235,.3); }
-
-.drop-zone {
-  border: 2px dashed rgba(37,99,235,.3);
-  border-radius: 12px;
-  padding: 3rem 2rem;
-  text-align: center;
-  transition: all .2s;
-  cursor: pointer;
-  background: transparent;
-}
-.drop-zone:hover,
-.drop-zone.dragover,
-.drop-zone:focus-visible {
-  border-color: var(--blue-bright);
-  background: rgba(37,99,235,.05);
-  outline: 2px solid var(--blue-bright);
-  outline-offset: 2px;
-}
-.drop-zone.disabled { opacity: .5; cursor: not-allowed; pointer-events: none; }
-.drop-zone-icon { font-size: 3rem; margin-bottom: 1rem; }
-.drop-zone-text { color: var(--text-dim); margin-bottom: .5rem; }
-.drop-zone-hint { font-size: .8rem; color: var(--text-dim); }
-
-.pdf-results { margin-top: 1rem; }
-.pdf-stat { display: flex; justify-content: space-between; padding: .5rem 0; border-bottom: 1px solid rgba(37,99,235,.1); font-size: .9rem; }
-.pdf-stat:last-child { border-bottom: none; }
-.pdf-stat-label { color: var(--text-dim); }
-.pdf-stat-value { font-family: var(--font-mono); }
+.status-region.warning { background: rgba(249,115,22,.1); color: var(--orange); border-color: rgba(249,115,22,.3); }
 
 .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -452,19 +372,14 @@ footer a:hover { text-decoration: underline; }
 footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 2px; border-radius: 2px; }
 
 .hidden { display: none !important; }
-
-.offline-card .hint { margin-top: .5rem; margin-bottom: .75rem; }
 .more { color: var(--text-muted); }
 
 @media (max-width: 600px) {
   header { padding: 1rem; }
   main { padding: 1rem; }
-  .tabs { flex-wrap: wrap; }
-  .tab { padding: .5rem 1rem; font-size: .9rem; }
   .card-body { padding: 1rem; }
   .config-grid { grid-template-columns: 1fr; }
   .steps { grid-template-columns: 1fr; }
-  .drop-zone { padding: 2rem 1rem; }
 }
   </style>
 </head>
@@ -489,7 +404,7 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
 
     
 
-    <section id="text-tab" class="tab-content active" role="tabpanel" aria-labelledby="tab-text">
+    <section id="text-tab">
     <div class="security-notice">
       <div class="icon" aria-hidden="true">💻</div>
       <div>
@@ -651,8 +566,8 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
   const PATTERNS = [
     { type: 'ssn', regex: /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, label: 'SSN' },
     { type: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: 'Email' },
-    { type: 'phone', regex: /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, label: 'Phone' },
-    { type: 'ip', regex: /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g, label: 'IP' },
+    { type: 'phone', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)/g, label: 'Phone' },
+    { type: 'ip', regex: /(?<!\d\.)(?<![0-9])\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b(?!\.\d)/g, label: 'IP' },
     { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, label: 'DOB' },
     { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
     { type: 'account', regex: /\b(?:account|acct|patient id|member id|policy)[:\s#]*\d{4,12}\b/gi, label: 'Account' },
@@ -719,6 +634,25 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
     return intervals;
   }
 
+  const DOB_CONTEXT_RE = /(?:^|[^a-zA-Z.])D\.?O\.?B\.?(?:[:\s.,;]|$)|\bDate of Birth\b|\bBirth\s*Date\b|\bborn\b/i;
+  function hasDobContext(text, s, e) {
+    const window = (text.slice(Math.max(0, s - 40), Math.min(text.length, e + 40)) || '');
+    return DOB_CONTEXT_RE.test(window);
+  }
+
+  function applyMasks(text, accepted, mapList = mappings) {
+    const sorted = [...accepted].sort((a, b) => a.start - b.start);
+    let out = '', pos = 0;
+    for (const c of sorted) {
+      out += text.slice(pos, c.start);
+      const m = mapList.find(x => x.original === c.original);
+      out += m ? m.masked : c.original;
+      pos = c.end;
+    }
+    out += text.slice(pos);
+    return out;
+  }
+
   // Exclusions take precedence over both pattern detection and the always-mask list.
   function findCandidates(text) {
     const exclusions = getExclusionIntervals(text), candidates = [];
@@ -727,6 +661,7 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
       for (const m of text.matchAll(p.regex)) {
         const s = m.index, e = s + m[0].length;
         if (overlaps(s, e, exclusions)) continue;
+        if (p.type === 'dob' && !hasDobContext(text, s, e)) continue;
         candidates.push({ start: s, end: e, original: m[0], type: p.type, label: p.label });
       }
     }
@@ -757,10 +692,7 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
       if (existing) { existing.type = c.label; }
       else { mappings.push({ id: uid(), original: c.original, masked: generateFake(c.type), type: c.label }); }
     }
-    const active = accepted.map(c => mappings.find(m => m.original === c.original)).filter(Boolean).sort((a, b) => b.original.length - a.original.length);
-    let result = text;
-    for (const m of active) result = result.split(m.original).join(m.masked);
-    $('masked-text').value = result;
+    $('masked-text').value = applyMasks(text, accepted);
     show(['masked-card', 'arrow-divider', 'response-card']);
     hide('final-card');
     $('llm-response').value = '';
@@ -783,10 +715,8 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
     mappings = mappings.filter(m => m.id !== id);
     const text = $('input-text').value;
     if (text.trim()) {
-      const active = [...mappings].sort((a, b) => b.original.length - a.original.length);
-      let result = text;
-      for (const m of active) result = result.split(m.original).join(m.masked);
-      $('masked-text').value = result;
+      const accepted = findCandidates(text);
+      $('masked-text').value = applyMasks(text, accepted);
     }
     renderDetected();
     updateCounts();
@@ -919,23 +849,6 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
   }
 
   function onRememberChange() { rememberTerms = $('remember-terms').checked; saveSettings(); saveTerms(); announce(rememberTerms ? 'Custom terms will be remembered on this device.' : 'Custom terms will not be stored on this device.'); }
-  function switchTab(tab) {
-    $$('.tab').forEach(t => { const active = t.id === `tab-${tab}`; t.classList.toggle('active', active); t.setAttribute('aria-selected', String(active)); t.setAttribute('tabindex', active ? '0' : '-1'); });
-    $$('.tab-content').forEach(c => c.classList.toggle('active', c.id === `${tab}-tab`));
-}
-
-  function handleTabKey(e) {
-    const tabs = $$('.tab');
-    const idx = tabs.indexOf(document.activeElement); if (idx < 0) return;
-    let next = idx;
-    if (e.key === 'ArrowRight') next = (idx + 1) % tabs.length;
-    else if (e.key === 'ArrowLeft') next = (idx - 1 + tabs.length) % tabs.length;
-    else if (e.key === 'Home') next = 0;
-    else if (e.key === 'End') next = tabs.length - 1;
-    else return;
-    e.preventDefault(); tabs[next].focus(); switchTab(tabs[next].dataset.tab);
-  }
-
   function show(ids) { if (!Array.isArray(ids)) ids = [ids]; for (const item of ids) { const el = typeof item === 'string' ? $(item) : item; if (el) el.classList.remove('hidden'); } }
   function hide(ids) { if (!Array.isArray(ids)) ids = [ids]; for (const item of ids) { const el = typeof item === 'string' ? $(item) : item; if (el) el.classList.add('hidden'); } }
 
@@ -982,13 +895,10 @@ $('input-text').value = ''; $('masked-text').value = ''; $('llm-response').value
     $('always-list').addEventListener('click', onListClick(alwaysMask, 'always'));
     $('never-list').addEventListener('click', onListClick(neverMask, 'never'));
 
-    const tablist = document.querySelector('.tabs');
-    if (tablist) { tablist.addEventListener('click', e => { const t = e.target.closest('.tab'); if (t) switchTab(t.dataset.tab); }); tablist.addEventListener('keydown', handleTabKey); }
   }
 
-  function init() { for (const t of $$('.tab')) t.dataset.tab = t.id.replace('tab-', ''); loadState(); bindEvents(); renderToggles(); renderAlways(); renderNever(); updateCounts(); }
+  function init() { loadState(); bindEvents(); renderToggles(); renderAlways(); renderNever(); updateCounts(); }
   document.addEventListener('DOMContentLoaded', init);
-
   // Offline-only API exposed for programmatic use and tests.
   function offlineMask(input, config) {
     if (config) offlineConfigure(config);
@@ -996,31 +906,28 @@ $('input-text').value = ''; $('masked-text').value = ''; $('llm-response').value
     maskText();
     return { text: $('masked-text').value, mappings };
   }
-
   function offlineUnmask(maskedText, mappingsArg) {
     if (mappingsArg) mappings = mappingsArg;
     $('llm-response').value = maskedText;
     unmaskText();
     return $('final-text').value;
   }
-
   function offlineConfigure(config) {
     if (config.preset && PRESETS[config.preset]) applyPreset(config.preset);
     for (const p of PATTERNS) {
       if (typeof config[p.type] === 'boolean') toggles[p.type] = config[p.type];
     }
     if (Array.isArray(config.alwaysMask)) {
-      alwaysMask = config.alwaysMask.map(term => ({ id: uid(), term, replacementType: 'generic' }));
+      alwaysMask = config.alwaysMask.map((term) => ({ id: uid(), term, replacementType: 'generic' }));
     }
     if (Array.isArray(config.neverMask)) {
-      neverMask = config.neverMask.map(term => ({ id: uid(), term }));
+      neverMask = config.neverMask.map((term) => ({ id: uid(), term }));
     }
     if (typeof config.rememberCustomTerms === 'boolean') {
       rememberTerms = config.rememberCustomTerms;
     }
     saveTerms();
   }
-
   window.Scrambler = {
     mask: offlineMask,
     unmask: offlineUnmask,
