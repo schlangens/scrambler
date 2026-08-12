@@ -1,26 +1,46 @@
 /**
  * PDF Redactor Service
- * Uses PyMuPDF for true redaction that preserves original layout
- * NO permanent storage - completely ephemeral
+ *
+ * This module redacts PDFs without ever writing them to disk.  It spawns a
+ * Python process and streams the PDF on the child's stdin, then reads the
+ * redacted PDF back from stdout using an 8-byte, big-endian, length-prefixed
+ * framing protocol.
+ *
+ * Public interface (must stay byte-identical for callers):
+ *   processPdf(pdfBuffer, style)
+ *   getStatus()
+ *   canAcceptSession()
+ *   MAX_CONCURRENT
+ *   MAX_FILE_SIZE
  */
 
-const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const crypto = require('crypto');
+const { spawn } = require("child_process");
+const path = require("path");
+const crypto = require("crypto");
+
+const REDACT_SCRIPT = path.join(__dirname, "redact.py");
 
 // Active sessions tracker (max 5 concurrent)
 const activeSessions = new Map();
 const MAX_CONCURRENT = 5;
 const SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+const PROCESS_TIMEOUT = parseInt(
+  process.env.SCRAMBLER_REDACT_TIMEOUT_MS,
+  10
+) || 60000; // 60 seconds
 
-// Path to Python redaction script
-const REDACT_SCRIPT = path.join(__dirname, 'redact.py');
+function normalizeStyle(style) {
+  const raw = typeof style === "string" ? style.trim().toLowerCase() : "";
+  // The public UI currently sends "blackbox" for the black-bar style.
+  if (raw === "blackout" || raw === "blackbox") {
+    return "blackout";
+  }
+  return "text";
+}
 
 /**
- * Clean up expired sessions
+ * Clean up expired sessions.
  */
 function cleanupSessions() {
   const now = Date.now();
@@ -32,7 +52,7 @@ function cleanupSessions() {
 }
 
 /**
- * Check if we can accept a new session
+ * Check if we can accept a new session.
  */
 function canAcceptSession() {
   cleanupSessions();
@@ -40,112 +60,200 @@ function canAcceptSession() {
 }
 
 /**
- * Create a processing session
+ * Create a processing session.  Returns a session id or null if at capacity.
  */
 function createSession() {
-  if (!canAcceptSession()) {
+  cleanupSessions();
+  if (activeSessions.size >= MAX_CONCURRENT) {
     return null;
   }
-  const sessionId = `pdf-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const sessionId = `pdf-${Date.now()}-${crypto
+    .randomBytes(8)
+    .toString("hex")}`;
   activeSessions.set(sessionId, { startTime: Date.now() });
   return sessionId;
 }
 
 /**
- * End a processing session
+ * End a processing session.
  */
 function endSession(sessionId) {
-  activeSessions.delete(sessionId);
+  if (sessionId) {
+    activeSessions.delete(sessionId);
+  }
 }
 
 /**
- * Process PDF: apply true redactions using PyMuPDF
+ * Verify that the buffer begins with the PDF magic bytes.
  */
-async function processPdf(pdfBuffer, style = 'text') {
-  // Validate file size
-  if (pdfBuffer.length > MAX_FILE_SIZE) {
-    throw new Error(`File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`);
+function isValidPdf(buffer) {
+  return (
+    Buffer.isBuffer(buffer) &&
+    buffer.length >= 4 &&
+    buffer.slice(0, 4).toString("latin1") === "%PDF"
+  );
+}
+
+/**
+ * Parse the 8-byte length-prefixed response from the Python redactor:
+ *
+ *   [ 8 bytes: redacted PDF length M ] [ M bytes: redacted PDF ]
+ *   [ 8 bytes: JSON metadata length K ] [ K bytes: JSON metadata ]
+ */
+function parseFramedResponse(buffer) {
+  if (buffer.length < 8) {
+    throw new Error("Redactor response too short");
   }
-  
+
+  let offset = 0;
+
+  const pdfLen = Number(buffer.readBigUInt64BE(offset));
+  offset += 8;
+  if (offset + pdfLen > buffer.length) {
+    throw new Error("Truncated PDF in redactor response");
+  }
+  const pdfBuffer = buffer.slice(offset, offset + pdfLen);
+  offset += pdfLen;
+
+  if (buffer.length < offset + 8) {
+    throw new Error("Missing metadata length in redactor response");
+  }
+  const metaLen = Number(buffer.readBigUInt64BE(offset));
+  offset += 8;
+  if (offset + metaLen > buffer.length) {
+    throw new Error("Truncated metadata in redactor response");
+  }
+  const metaBuffer = buffer.slice(offset, offset + metaLen);
+
+  return { pdfBuffer, meta: JSON.parse(metaBuffer.toString("utf-8")) };
+}
+
+/**
+ * Run the Python redactor in a child process, streaming the PDF in and the
+ * redacted PDF + metadata out.  No shell is used, no files are written,
+ * and the child is killed on timeout.
+ */
+function runPythonRedactor(pdfBuffer, style) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("python3", [REDACT_SCRIPT, style], {
+      stdio: ["pipe", "pipe", "ignore"],
+    });
+
+    const stdoutChunks = [];
+    let timedOut = false;
+
+    child.stdout.on("data", (chunk) => stdoutChunks.push(chunk));
+
+    // Stderr is ignored (not piped) to avoid accidentally logging PII.
+    // Python writes all structured output (including errors) to stdout
+    // using the framing protocol. Unexpected stderr content is not
+    // surfaced to the user.
+
+    // Swallow stdin errors (e.g. EPIPE) - the close handler will surface the
+    // real failure or timeout and avoid an unhandled exception.
+    child.stdin.on("error", () => {});
+
+    const inputHeader = Buffer.alloc(8);
+    inputHeader.writeBigUInt64BE(BigInt(pdfBuffer.length));
+    child.stdin.end(Buffer.concat([inputHeader, pdfBuffer]));
+
+    const timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, PROCESS_TIMEOUT);
+
+    child.on("error", (err) => {
+      clearTimeout(timeoutHandle);
+      reject(new Error(`Failed to start redactor: ${err.message}`));
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(timeoutHandle);
+
+      if (timedOut) {
+        const seconds = Math.ceil(PROCESS_TIMEOUT / 1000);
+        reject(new Error(`PDF processing timed out after ${seconds} seconds`));
+        return;
+      }
+      if (signal) {
+        reject(new Error(`PDF redactor terminated by signal ${signal}`));
+        return;
+      }
+      if (code !== 0) {
+        reject(new Error(`PDF redactor failed with exit code ${code}`));
+        return;
+      }
+
+      try {
+        const response = parseFramedResponse(Buffer.concat(stdoutChunks));
+
+        if (response.meta && response.meta.error) {
+          reject(new Error(response.meta.error));
+          return;
+        }
+        if (!response.pdfBuffer || response.pdfBuffer.length === 0) {
+          reject(new Error("Redacted PDF was not produced"));
+          return;
+        }
+
+        resolve(response);
+      } catch (parseErr) {
+        reject(new Error(`Invalid redactor response: ${parseErr.message}`));
+      }
+    });
+  });
+}
+
+/**
+ * Process PDF: apply true redactions using PyMuPDF.
+ *
+ * The PDF is never written to disk.  Input is validated by magic bytes and
+ * the redactor process runs with a strict timeout and concurrency cap.
+ */
+async function processPdf(pdfBuffer, style = "text") {
+  if (!Buffer.isBuffer(pdfBuffer)) {
+    throw new Error("Invalid PDF buffer");
+  }
+  if (pdfBuffer.length > MAX_FILE_SIZE) {
+    throw new Error(
+      `File too large. Maximum size is ${MAX_FILE_SIZE / 1024 / 1024}MB`
+    );
+  }
+  if (!isValidPdf(pdfBuffer)) {
+    throw new Error("File does not appear to be a valid PDF");
+  }
+
+  const cleanStyle = normalizeStyle(style);
+
   const sessionId = createSession();
   if (!sessionId) {
-    throw new Error('Server busy - maximum 5 concurrent sessions. Please try again in a moment.');
+    throw new Error(
+      "Server busy - maximum 5 concurrent sessions. Please try again in a moment."
+    );
   }
-  
-  // Create temp files
-  const tmpId = crypto.randomBytes(8).toString('hex');
-  const tmpInput = path.join(os.tmpdir(), `scrambler-in-${tmpId}.pdf`);
-  const tmpOutput = path.join(os.tmpdir(), `scrambler-out-${tmpId}.pdf`);
-  
+
   try {
-    // Write input PDF to temp file
-    fs.writeFileSync(tmpInput, pdfBuffer);
-    
-    // Get original page count
-    let originalPageCount = 1;
-    try {
-      const info = execSync(`pdfinfo "${tmpInput}" 2>/dev/null`, { encoding: 'utf-8' });
-      const match = info.match(/Pages:\s*(\d+)/);
-      if (match) originalPageCount = parseInt(match[1], 10);
-    } catch (e) {
-      // Ignore pdfinfo errors
-    }
-    
-    // Run Python redaction script
-    const result = execSync(`python3 "${REDACT_SCRIPT}" "${tmpInput}" "${tmpOutput}"`, {
-      timeout: 60000,
-      encoding: 'utf-8',
-      maxBuffer: 10 * 1024 * 1024
-    });
-    
-    // Parse result
-    let redactResult;
-    try {
-      redactResult = JSON.parse(result.trim());
-    } catch (e) {
-      throw new Error('Failed to parse redaction result');
-    }
-    
-    if (redactResult.error) {
-      throw new Error(redactResult.error);
-    }
-    
-    // Read the redacted PDF
-    if (!fs.existsSync(tmpOutput)) {
-      throw new Error('Redacted PDF was not created');
-    }
-    
-    const redactedPdfBuffer = fs.readFileSync(tmpOutput);
-    
-    // Get new page count
-    let newPageCount = originalPageCount;
-    try {
-      const info = execSync(`pdfinfo "${tmpOutput}" 2>/dev/null`, { encoding: 'utf-8' });
-      const match = info.match(/Pages:\s*(\d+)/);
-      if (match) newPageCount = parseInt(match[1], 10);
-    } catch (e) {
-      // Ignore
-    }
-    
+    const response = await runPythonRedactor(pdfBuffer, cleanStyle);
+
     return {
-      pdfBuffer: redactedPdfBuffer,
-      originalPageCount,
-      newPageCount,
-      detections: redactResult.detections || [],
-      style,
-      sessionId
+      pdfBuffer: response.pdfBuffer,
+      originalPageCount: response.meta.originalPageCount,
+      newPageCount: response.meta.newPageCount,
+      detections: response.meta.detections || [],
+      pagesWithoutText: response.meta.pagesWithoutText || [],
+      hasUncheckedPages: Boolean(response.meta.hasUncheckedPages),
+      charCount: response.meta.charCount,
+      redactedCharCount: response.meta.redactedCharCount,
+      style: cleanStyle,
+      sessionId,
     };
-    
   } finally {
-    // Clean up temp files
-    try { fs.unlinkSync(tmpInput); } catch (e) {}
-    try { fs.unlinkSync(tmpOutput); } catch (e) {}
     endSession(sessionId);
   }
 }
 
 /**
- * Get current session status
+ * Get current session status.
  */
 function getStatus() {
   cleanupSessions();
@@ -153,7 +261,7 @@ function getStatus() {
     activeSessions: activeSessions.size,
     maxSessions: MAX_CONCURRENT,
     available: MAX_CONCURRENT - activeSessions.size,
-    maxFileSizeMB: MAX_FILE_SIZE / 1024 / 1024
+    maxFileSizeMB: MAX_FILE_SIZE / 1024 / 1024,
   };
 }
 
@@ -162,5 +270,5 @@ module.exports = {
   getStatus,
   canAcceptSession,
   MAX_CONCURRENT,
-  MAX_FILE_SIZE
+  MAX_FILE_SIZE,
 };
