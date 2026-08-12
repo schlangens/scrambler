@@ -554,13 +554,16 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
 
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
+  // Synthetic replacement pools. Names, companies and domains are invented
+  // (not Microsoft sample names or top-100 surnames) and use the reserved
+  // .example TLD, so an LLM is unlikely to emit the exact value in unrelated
+  // text while the text still reads naturally. Structured identifiers keep a
+  // realistic shape (XXX-XX-1234, (555) 100-1000, etc.).
   const FAKE = {
-    companies: ['Contoso','Fabrikam','Northwind','Adventure Works','Woodgrove','Tailspin'],
-    firstNames: ['Alex','Jordan','Taylor','Morgan','Casey','Riley','Quinn','Avery'],
-    lastNames: ['Smith','Johnson','Williams','Brown','Jones','Miller','Davis','Wilson'],
-    domains: ['contoso.com','fabrikam.com','example.org','test.net'],
-    streets: ['Main St','Oak Ave','Elm Dr','Park Blvd','Cedar Ln'],
-    cities: ['Springfield','Riverside','Fairview','Madison','Georgetown']
+    firstNames: ['Marlow','Bexley','Sable','Vance','Crosby','Winslow','Ellery','Pembroke','Ashford','Rowan','Greer','Thorne','Maren','Locke','Sullivan','Hawke'],
+    lastNames: ['Quintrell','Harrow','Winslet','Crane','Fenn','Hale','Merriweather','Stirling','Calloway','Drummond','Ellsworth','Pemberton','Holloway','Kinsey','Larkin','Mercer'],
+    companies: ['Bexley Harrow Ltd','Quintrell & Vance','Marlow Sable Co','Pembroke Ashford Group','Crosby Winslow Associates','Ellery Thorne Inc','Sable Rowan Partners','Vance Hawke Ltd','Winslow Crane Co','Ashford Fenn Group','Greer Marlow Ltd','Locke Ellery Inc','Hale Calloway Ltd','Fenn Pembroke Co','Maren Winslet Inc','Sullivan Bexley Group'],
+    domains: ['bexley-harrow.example','quintrell-vance.example','marlow-sable.example','pembroke-ashford.example','crosby-winslow.example','ellery-thorne.example','sable-rowan.example','vance-hawke.example','winslow-crane.example','ashford-fenn.example','greer-marlow.example','locke-ellery.example','hale-calloway.example','fenn-pembroke.example','maren-winslet.example','sullivan-bexley.example']
   };
 
   const PATTERNS = [
@@ -568,8 +571,8 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
     { type: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: 'Email' },
     { type: 'phone', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)/g, label: 'Phone' },
     { type: 'ip', regex: /(?<!\d\.)(?<![0-9])\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b(?!\.\d)/g, label: 'IP' },
-    { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, label: 'DOB' },
-    { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
+    { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:\d{2}|\d{4})\b/g, label: 'DOB' },
+    { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record(?:\s*(?:Number|No|#))?)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
     { type: 'account', regex: /\b(?:account|acct|patient id|member id|policy)[:\s#]*\d{4,12}\b/gi, label: 'Account' },
     { type: 'creditCard', regex: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g, label: 'Credit Card' },
     { type: 'driversLicense', regex: /\b[A-Z]{1,3}\d{6,10}\b/gi, label: 'License' }
@@ -611,17 +614,18 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
 
   function generateFake(type) {
     switch (type) {
-      case 'email': return `${FAKE.firstNames[getNext('fn')%FAKE.firstNames.length].toLowerCase()}.${FAKE.lastNames[getNext('ln')%FAKE.lastNames.length].toLowerCase()}@${FAKE.domains[getNext('dom')%FAKE.domains.length]}`;
+      case 'email':
+        return `${FAKE.firstNames[getNext('fn')%FAKE.firstNames.length].toLowerCase()}.${FAKE.lastNames[getNext('ln')%FAKE.lastNames.length].toLowerCase()}@${FAKE.domains[getNext('dom')%FAKE.domains.length]}`;
       case 'phone': return `(555) ${String(100+getNext('p1')%900).padStart(3,'0')}-${String(1000+getNext('p2')%9000).padStart(4,'0')}`;
-      case 'ssn': return `XXX-XX-${String(1000+getNext('ssn')%9000)}`;
+      case 'ssn': return `XXX-XX-${String(1000+getNext('ssn')%9000).padStart(4,'0')}`;
       case 'name': return `${FAKE.firstNames[getNext('n1')%FAKE.firstNames.length]} ${FAKE.lastNames[getNext('n2')%FAKE.lastNames.length]}`;
       case 'company': return FAKE.companies[getNext('co')%FAKE.companies.length];
-      case 'ip': return `10.${getNext('ip1')%256}.${getNext('ip2')%256}.${getNext('ip3')%256}`;
+      case 'ip': return `192.0.2.${(getNext('ip') % 254) + 1}`;
       case 'dob': return `XX/XX/${1950+getNext('dob')%50}`;
-      case 'mrn': return `MRN-${100000+getNext('mrn')%900000}`;
-      case 'account': return `ACCT-${String(getNext('acct')).padStart(6,'0')}`;
-      case 'creditCard': return `XXXX-XXXX-XXXX-${String(1000+getNext('cc')%9000)}`;
-      case 'driversLicense': return `DL-${String(100000+getNext('dl')%900000)}`;
+      case 'mrn': return `MRN-${String(100000+getNext('mrn')%900000).padStart(6,'0')}`;
+      case 'account': return `ACCT-${String(100000+getNext('acct')%900000).padStart(6,'0')}`;
+      case 'creditCard': return `XXXX-XXXX-XXXX-${String(1000+getNext('cc')%9000).padStart(4,'0')}`;
+      case 'driversLicense': return `DL-${String(100000+getNext('dl')%900000).padStart(6,'0')}`;
       default: return `[REDACTED-${Math.random().toString(36).slice(2,6).toUpperCase()}]`;
     }
   }
@@ -727,12 +731,18 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
     const text = $('llm-response').value.trim();
     if (!text) { setStatus('text-status', 'Please paste the LLM response first.', 'error'); return; }
     const sorted = [...mappings].sort((a, b) => b.masked.length - a.masked.length);
+    const found = new Set(), missing = [];
+    for (const m of sorted) if (text.includes(m.masked)) found.add(m.id);
+    for (const m of mappings) if (!found.has(m.id)) missing.push(m);
     let result = text;
     for (const m of sorted) result = result.split(m.masked).join(m.original);
     $('final-text').value = result;
     show('final-card');
-    setStatus('text-status', 'Original values restored.', 'success');
-    announce('Original values restored.');
+    const total = mappings.length;
+    const msg = `Restored ${found.size} of ${total} value${total === 1 ? '' : 's'}.`;
+    const detail = missing.length ? ` Not found: ${missing.slice(0, 3).map(m => m.type || m.original).join(', ')}${missing.length > 3 ? '...' : ''}.` : '';
+    setStatus('text-status', msg + detail, missing.length ? 'warning' : 'success');
+    announce(msg + detail);
   }
 
   async function copyTo(textareaId, successMessage) {
