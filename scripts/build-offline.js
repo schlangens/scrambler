@@ -25,6 +25,9 @@ const OUT = path.join(PUBLIC, 'scrambler-offline.html');
 const NETWORK_KEYWORDS = [
   'fetch',
   'xmlhttprequest',
+  'websocket',
+  'ws://',
+  'wss://',
   'http://',
   'https://',
   '<script src=',

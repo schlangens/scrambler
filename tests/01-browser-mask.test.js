@@ -70,6 +70,43 @@ describe('Browser-side text masking', () => {
     assert.strictEqual(mappings.length, 0);
   });
 
+  it('masks email addresses that start with ., +, % or -', () => {
+    const app = loadApp();
+    const input = [
+      'Lead: .dot@acme.com',
+      'Lead: +plus@acme.com',
+      'Lead: %pct@acme.com',
+      'Lead: -dash@acme.com',
+    ].join('\n');
+    const { text: masked, mappings } = app.mask(input);
+
+    assert.strictEqual(app.networkCalls.length, 0, 'Masking must not make any network request');
+    for (const lead of ['.', '+', '%', '-']) {
+      assert.ok(!masked.includes('Lead: ' + lead), `Masked text still contains a leading '${lead}' on an email line`);
+      assert.ok(!masked.includes(lead + 'acme'), `Masked text still contains stray '${lead}' before an email`);
+    }
+    assert.ok(!masked.includes('@acme.com'), 'Masked text still contains the original email domain');
+    assert.strictEqual(mappings.length, 4, `Expected 4 email mappings, found ${mappings.length}`);
+
+    const restored = app.unmask(masked, mappings);
+    assert.strictEqual(restored, input, 'Unmasking should restore the original text exactly');
+  });
+
+  it('masks a phone glued to a word and skips phones glued to letters', () => {
+    const app = loadApp();
+    const input = 'Call: call(415) 555-0199 now\nNot a phone: x415-555-0199';
+    const { text: masked, mappings } = app.mask(input);
+
+    assert.strictEqual(app.networkCalls.length, 0, 'Masking must not make any network request');
+    assert.ok(!masked.includes('(('), 'Masked text still contains a stray parenthesis from the original glued phone');
+    assert.ok(!masked.includes('415) 555-0199'), 'Masked text still contains the glued phone number');
+    assert.ok(masked.includes('x415-555-0199'), 'Identifier-style number should not have been masked');
+    assert.ok(mappings.some((m) => m.type === 'Phone' || m.type === 'phone'), 'Expected a phone mapping');
+
+    const restored = app.unmask(masked, mappings);
+    assert.strictEqual(restored, input, 'Unmasking should restore the original text exactly');
+  });
+
   it('does not treat false-positive traps as PII', () => {
     const app = loadApp();
     const input = [

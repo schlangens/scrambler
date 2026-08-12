@@ -8,7 +8,7 @@ const { SYNTHETIC_PII, sampleParagraph } = require('./fixtures');
 const OFFLINE_FILE = path.join(__dirname, '..', 'public', 'scrambler-offline.html');
 const BUILD_SCRIPT = path.join(__dirname, '..', 'scripts', 'build-offline.js');
 
-const NETWORK_KEYWORDS = ['fetch', 'XMLHttpRequest', 'http://', 'https://', '<script src=', '<link ', 'href="//', '@import url', 'src="//'];
+const NETWORK_KEYWORDS = ['fetch', 'XMLHttpRequest', 'WebSocket', 'ws://', 'wss://', 'http://', 'https://', '<script src=', '<link ', 'href="//', '@import url', 'src="//'];
 const PDF_ENDPOINTS = ['/api/pdf/', '/api/pdf/analyze', '/api/pdf/redact', '/api/pdf/status'];
 
 describe('Offline file', () => {
