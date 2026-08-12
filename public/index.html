@@ -201,12 +201,20 @@
       </div>
 
       <div class="card hidden" id="pdf-result-card">
-        <div class="card-header"><h2>Redaction Complete</h2><button id="download-pdf-btn" class="btn btn-success" aria-label="Download the redacted PDF"><span aria-hidden="true">⬇️</span> Download Redacted PDF</button></div>
+        <div class="card-header"><h2 id="pdf-result-header">Redaction Complete</h2><button id="download-pdf-btn" class="btn btn-success" aria-label="Download the redacted PDF"><span aria-hidden="true">⬇️</span> Download Redacted PDF</button></div>
         <div class="card-body">
-          <div class="pdf-results">
+          <div class="pdf-results" id="pdf-results">
             <div class="pdf-stat"><span class="pdf-stat-label">Original Pages</span><span class="pdf-stat-value" id="pdf-orig-pages">-</span></div>
             <div class="pdf-stat"><span class="pdf-stat-label">Output Pages</span><span class="pdf-stat-value" id="pdf-new-pages">-</span></div>
             <div class="pdf-stat"><span class="pdf-stat-label">Items Redacted</span><span class="pdf-stat-value" id="pdf-redacted-count">-</span></div>
+          </div>
+          <div id="pdf-scanned-warning" class="scanned-warning hidden" tabindex="0">
+            <div class="icon" aria-hidden="true">⚠️</div>
+            <div>
+              <strong id="pdf-scanned-title">Some pages could not be checked.</strong>
+              <p id="pdf-scanned-text">Pages without readable text were not searched for personal information. Anything visible on those pages is still in the document.</p>
+              <p id="pdf-scanned-pages" class="hint"></p>
+            </div>
           </div>
           <ul id="pdf-detections" class="detected-list hidden"></ul>
         </div>

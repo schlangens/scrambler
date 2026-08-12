@@ -303,7 +303,7 @@
   }
 
   async function processPdf(file) {
-    hide('pdf-result-card'); hide('pdf-status');
+    hide('pdf-result-card'); hide('pdf-status'); hide('pdf-scanned-warning');
     if (file.size > MAX_FILE_SIZE) { setStatus('pdf-status', 'That file is larger than 10 MB. Choose a smaller PDF.', 'error'); return; }
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) { setStatus('pdf-status', 'Only PDF files are accepted.', 'error'); return; }
     setPdfBusy(true);
@@ -315,13 +315,47 @@
       if (res.status === 429) throw new Error('Too many requests. Please wait a moment and try again.');
       if (!res.ok) { let msg = 'The PDF could not be processed.'; try { const data = await res.json(); if (data.error) msg = data.error; } catch {} throw new Error(msg); }
       const data = await res.json(); pdfBase64 = data.pdfBase64; if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); pdfBlobUrl = null;
+      const pagesWithoutText = data.pagesWithoutText || [];
+      const hasPagesWithoutText = data.hasUncheckedPages || data.hasPagesWithoutText || pagesWithoutText.length > 0;
+      const totalPages = data.originalPageCount || 0;
+      const allUnreadable = hasPagesWithoutText && totalPages > 0 && pagesWithoutText.length === totalPages;
+
       $('pdf-orig-pages').textContent = data.originalPageCount; $('pdf-new-pages').textContent = data.newPageCount; $('pdf-redacted-count').textContent = data.detections.length;
       const list = $('pdf-detections');
       if (data.detections.length > 0) {
         show(list);
         list.innerHTML = '<li><strong>Items redacted:</strong></li>' + data.detections.slice(0,20).map(d => `<li><span class="detected-type">${esc(d.type)}</span><span class="detected-original">${esc(d.original)}</span><span class="detected-arrow" aria-hidden="true">→</span><span class="detected-masked">${esc(d.redacted)}</span></li>`).join('') + (data.detections.length > 20 ? `<li class="more">... and ${data.detections.length - 20} more</li>` : '');
       } else { hide(list); }
-      show('pdf-result-card'); setStatus('pdf-status', 'PDF redaction complete. Download it below.', 'success'); announce('PDF redaction complete.');
+
+      const warning = $('pdf-scanned-warning');
+      warning.classList.remove('critical');
+      $('pdf-result-header').textContent = 'Redaction Complete';
+      show('pdf-results');
+
+      if (allUnreadable) {
+        $('pdf-result-header').textContent = 'No Readable Text Found';
+        hide(['pdf-results', 'pdf-detections']);
+        warning.classList.add('critical');
+        $('pdf-scanned-title').textContent = 'No readable text found';
+        $('pdf-scanned-text').textContent = 'This PDF appears to be entirely scanned images. No pages had readable text, so nothing could be checked for personal information. The file was returned unchanged.';
+        $('pdf-scanned-pages').textContent = `Pages affected: ${pagesWithoutText.join(', ')}`;
+        show(warning);
+        setStatus('pdf-status', 'No readable text found. The PDF was returned unchanged.', 'warning');
+        announce('No readable text found. The PDF was returned unchanged.');
+      } else if (hasPagesWithoutText) {
+        warning.classList.add('warning');
+        $('pdf-scanned-title').textContent = 'Some pages could not be checked';
+        $('pdf-scanned-text').textContent = 'Pages without readable text were not searched for personal information. Anything visible on those pages is still in the document.';
+        $('pdf-scanned-pages').textContent = `Pages affected: ${pagesWithoutText.join(', ')}`;
+        show(warning);
+        setStatus('pdf-status', `PDF redaction complete. ${pagesWithoutText.length} page${pagesWithoutText.length === 1 ? '' : 's'} had no readable text and ${pagesWithoutText.length === 1 ? 'was' : 'were'} not checked.`, 'warning');
+        announce(`${pagesWithoutText.length} page${pagesWithoutText.length === 1 ? '' : 's'} had no readable text and ${pagesWithoutText.length === 1 ? 'was' : 'were'} not checked.`);
+      } else {
+        hide(warning);
+        setStatus('pdf-status', 'PDF redaction complete. Download it below.', 'success');
+        announce('PDF redaction complete.');
+      }
+      show('pdf-result-card');
     } catch (e) {
       const message = e.message.includes('Failed to fetch') || e.message === 'NetworkError when attempting to fetch resource.' ? 'Could not reach the server. Check your connection and try again.' : e.message;
       setStatus('pdf-status', message, 'error'); announce(message);
