@@ -26,6 +26,16 @@
       <p>Mask PII in text or redact PII from PDFs before sharing with LLMs or external parties</p>
     </div>
 
+    <div class="card offline-card" role="region" aria-labelledby="offline-title">
+      <div class="card-header">
+        <h2 id="offline-title">Use Scrambler Offline</h2>
+      </div>
+      <div class="card-body">
+        <p class="hint">With the offline copy there is no server involved at all, so a cautious user can satisfy themselves that nothing they paste can go anywhere. It covers text masking only, because PDF redaction needs the server.</p>
+        <a id="offline-link" href="/scrambler-offline.html" download class="btn btn-primary" aria-label="Download offline version, about 42 KB">Download offline version <span class="file-size" id="offline-size">about 42 KB</span></a>
+      </div>
+    </div>
+
     <div class="tabs" role="tablist" aria-label="Tool sections">
       <button id="tab-text" class="tab active" role="tab" aria-selected="true" aria-controls="text-tab" tabindex="0"><span aria-hidden="true">📝</span> Text</button>
       <button id="tab-pdf" class="tab" role="tab" aria-selected="false" aria-controls="pdf-tab" tabindex="-1"><span aria-hidden="true">📄</span> PDF Redact</button>
@@ -37,14 +47,6 @@
         <div>
           <h2>100% Private — Browser-Only Processing</h2>
           <p>Text masking happens entirely in your browser. Nothing is sent to any server. You can confirm this by opening your browser's Network panel and watching zero requests appear while you mask. When you close this tab, everything disappears.</p>
-        </div>
-      </div>
-
-      <div class="card offline-card">
-        <div class="card-header"><h2>Use Scrambler Offline</h2></div>
-        <div class="card-body">
-          <p class="hint">With the offline copy there is no server involved at all, so a cautious user can satisfy themselves that nothing they paste can go anywhere. It covers text masking only, because PDF redaction needs the server.</p>
-          <a id="offline-link" href="/scrambler-offline.html" download class="btn btn-ghost btn-sm">Download offline version</a>
         </div>
       </div>
 

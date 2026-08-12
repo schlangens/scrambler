@@ -112,6 +112,12 @@ main {
 }
 .hero h1 { font-size: 1.5rem; margin-bottom: .5rem; }
 .hero p { color: var(--text-dim); font-size: .95rem; }
+.file-size {
+  color: rgba(255,255,255,.75);
+  font-size: .8rem;
+  margin-left: .5rem;
+  font-weight: 400;
+}
 
 .security-notice {
   background: rgba(34,197,94,.1);
@@ -372,6 +378,7 @@ footer a:hover { text-decoration: underline; }
 footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 2px; border-radius: 2px; }
 
 .hidden { display: none !important; }
+
 .more { color: var(--text-muted); }
 
 @media (max-width: 600px) {
@@ -404,6 +411,8 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
 
     
 
+    
+
     <section id="text-tab">
     <div class="security-notice">
       <div class="icon" aria-hidden="true">💻</div>
@@ -419,8 +428,6 @@ footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 
           <p>Text masking happens entirely in your browser. Nothing is sent to any server. You can confirm this by opening your browser's Network panel and watching zero requests appear while you mask. When you close this tab, everything disappears.</p>
         </div>
       </div>
-
-      
 
       <div class="card">
         <div class="card-header"><h2>① Paste Your Sensitive Text</h2></div>
