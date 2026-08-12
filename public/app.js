@@ -80,7 +80,7 @@
       case 'ip': return `192.0.2.${(getNext('ip') % 254) + 1}`;
       case 'dob': return `XX/XX/${1950+getNext('dob')%50}`;
       case 'mrn': return `MRN-${String(100000+getNext('mrn')%900000).padStart(6,'0')}`;
-      case 'account': return `ACCT-${String(getNext('acct')).padStart(6,'0')}`;
+      case 'account': return `ACCT-${String(100000+getNext('acct')%900000).padStart(6,'0')}`;
       case 'creditCard': return `XXXX-XXXX-XXXX-${String(1000+getNext('cc')%9000).padStart(4,'0')}`;
       case 'driversLicense': return `DL-${String(100000+getNext('dl')%900000).padStart(6,'0')}`;
       default: return `[REDACTED-${Math.random().toString(36).slice(2,6).toUpperCase()}]`;
