@@ -11,11 +11,17 @@
 
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-  // A per-session random token embedded in every masked value. This makes it
-  // vanishingly unlikely that an LLM will spontaneously write the exact same
-  // string in unrelated text, which would cause unmaskText() to corrupt that
-  // text. Values stay readable (Placeholder-Company-TOKEN-001 style).
-  const SCRAMBLER_TOKEN = Math.random().toString(36).slice(2, 8).toUpperCase();
+  // Synthetic replacement pools. Names, companies and domains are invented
+  // (not Microsoft sample names or top-100 surnames) and use the reserved
+  // .example TLD, so an LLM is unlikely to emit the exact value in unrelated
+  // text while the text still reads naturally. Structured identifiers keep a
+  // realistic shape (XXX-XX-1234, (555) 100-1000, etc.).
+  const FAKE = {
+    firstNames: ['Marlow','Bexley','Sable','Vance','Crosby','Winslow','Ellery','Pembroke','Ashford','Rowan','Greer','Thorne','Maren','Locke','Sullivan','Hawke'],
+    lastNames: ['Quintrell','Harrow','Winslet','Crane','Fenn','Hale','Merriweather','Stirling','Calloway','Drummond','Ellsworth','Pemberton','Holloway','Kinsey','Larkin','Mercer'],
+    companies: ['Bexley Harrow Ltd','Quintrell & Vance','Marlow Sable Co','Pembroke Ashford Group','Crosby Winslow Associates','Ellery Thorne Inc','Sable Rowan Partners','Vance Hawke Ltd','Winslow Crane Co','Ashford Fenn Group','Greer Marlow Ltd','Locke Ellery Inc','Hale Calloway Ltd','Fenn Pembroke Co','Maren Winslet Inc','Sullivan Bexley Group'],
+    domains: ['bexley-harrow.example','quintrell-vance.example','marlow-sable.example','pembroke-ashford.example','crosby-winslow.example','ellery-thorne.example','sable-rowan.example','vance-hawke.example','winslow-crane.example','ashford-fenn.example','greer-marlow.example','locke-ellery.example','hale-calloway.example','fenn-pembroke.example','maren-winslet.example','sullivan-bexley.example']
+  };
 
   const PATTERNS = [
     { type: 'ssn', regex: /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, label: 'SSN' },
@@ -63,22 +69,21 @@
   function uid() { return 'a' + Math.random().toString(36).slice(2, 9); }
   function getNext(k) { if (!counters[k]) counters[k] = 0; return counters[k]++; }
 
-  function fakeSuffix(k, width = 3) { return String(getNext(k)).padStart(width, '0'); }
-
   function generateFake(type) {
     switch (type) {
-      case 'email': return `scrambler-${SCRAMBLER_TOKEN}-person-${fakeSuffix('em')}@example.org`;
-      case 'phone': return `scrambler-${SCRAMBLER_TOKEN}-phone-${fakeSuffix('ph')}`;
-      case 'ssn': return `scrambler-${SCRAMBLER_TOKEN}-ssn-${fakeSuffix('ssn')}`;
-      case 'name': return `scrambler-${SCRAMBLER_TOKEN}-person-${fakeSuffix('nm')}`;
-      case 'company': return `scrambler-${SCRAMBLER_TOKEN}-company-${fakeSuffix('co')}`;
-      case 'ip': return `scrambler-${SCRAMBLER_TOKEN}-ip-${fakeSuffix('ip')}`;
+      case 'email':
+        return `${FAKE.firstNames[getNext('fn')%FAKE.firstNames.length].toLowerCase()}.${FAKE.lastNames[getNext('ln')%FAKE.lastNames.length].toLowerCase()}@${FAKE.domains[getNext('dom')%FAKE.domains.length]}`;
+      case 'phone': return `(555) ${String(100+getNext('p1')%900).padStart(3,'0')}-${String(1000+getNext('p2')%9000).padStart(4,'0')}`;
+      case 'ssn': return `XXX-XX-${String(1000+getNext('ssn')%9000).padStart(4,'0')}`;
+      case 'name': return `${FAKE.firstNames[getNext('n1')%FAKE.firstNames.length]} ${FAKE.lastNames[getNext('n2')%FAKE.lastNames.length]}`;
+      case 'company': return FAKE.companies[getNext('co')%FAKE.companies.length];
+      case 'ip': return `192.0.2.${(getNext('ip') % 254) + 1}`;
       case 'dob': return `XX/XX/${1950+getNext('dob')%50}`;
-      case 'mrn': return `scrambler-${SCRAMBLER_TOKEN}-mrn-${fakeSuffix('mrn', 6)}`;
-      case 'account': return `scrambler-${SCRAMBLER_TOKEN}-account-${fakeSuffix('acct', 6)}`;
-      case 'creditCard': return `scrambler-${SCRAMBLER_TOKEN}-cc-${fakeSuffix('cc')}`;
-      case 'driversLicense': return `scrambler-${SCRAMBLER_TOKEN}-dl-${fakeSuffix('dl', 6)}`;
-      default: return `scrambler-${SCRAMBLER_TOKEN}-redacted-${fakeSuffix('red')}`;
+      case 'mrn': return `MRN-${String(100000+getNext('mrn')%900000).padStart(6,'0')}`;
+      case 'account': return `ACCT-${String(getNext('acct')).padStart(6,'0')}`;
+      case 'creditCard': return `XXXX-XXXX-XXXX-${String(1000+getNext('cc')%9000).padStart(4,'0')}`;
+      case 'driversLicense': return `DL-${String(100000+getNext('dl')%900000).padStart(6,'0')}`;
+      default: return `[REDACTED-${Math.random().toString(36).slice(2,6).toUpperCase()}]`;
     }
   }
 
