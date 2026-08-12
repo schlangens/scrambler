@@ -180,6 +180,8 @@ app.post('/api/pdf/redact', pdfRateLimiter, upload.single('pdf'), async (req, re
     res.setHeader('Content-Disposition', 'attachment; filename="redacted.pdf"');
     res.setHeader('X-Detections-Count', result.detections.length);
     res.setHeader('X-Original-Pages', result.originalPageCount);
+    res.setHeader('X-Has-Unchecked-Pages', result.hasUncheckedPages ? 'true' : 'false');
+    res.setHeader('X-Pages-Without-Text', JSON.stringify(result.pagesWithoutText || []));
     res.send(result.pdfBuffer);
 
     result.pdfBuffer = null;
@@ -221,6 +223,9 @@ app.post('/api/pdf/analyze', pdfRateLimiter, upload.single('pdf'), async (req, r
       originalPageCount: result.originalPageCount,
       newPageCount: result.newPageCount,
       detections: result.detections,
+      pagesWithoutText: result.pagesWithoutText || [],
+      uncheckedPages: result.pagesWithoutText || [],
+      hasUncheckedPages: Boolean(result.hasUncheckedPages),
       charCount: result.charCount,
       redactedCharCount: result.redactedCharCount,
       pdfBase64: pdfBase64
