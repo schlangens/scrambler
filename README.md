@@ -32,6 +32,8 @@ PDF mode (one upload, server-side)
                 └────── redacted bytes ────────┘
 ```
 
+Two PDF endpoints are available. `POST /api/pdf/redact` returns the redacted PDF as a binary `application/pdf` download (`Content-Disposition: attachment; filename="redacted.pdf"`). `POST /api/pdf/analyze` returns the same redacted PDF as `pdfBase64` plus JSON metadata: `detections`, `originalPageCount`, `newPageCount`, `charCount`, and `redactedCharCount`.
+
 ## Privacy and threat model
 
 This is the section a security reviewer should read first.
@@ -41,7 +43,8 @@ This is the section a security reviewer should read first.
 - **What is logged.** Server logs contain only the listening port, rate-limiter metadata, and generic error categories such as `PDF processing failed` or `Internal server error`. The Python redactor’s `stderr` is discarded. Request bodies, file contents, detected values, and original text are never logged.
 - **What happens client-side.** `public/app.js` performs all detection, mapping, masking, and unmasking in JavaScript. The mapping array lives in the page’s memory and is gone when the tab closes.
 - **What this does not protect against.**
-  - Detection is regex-based. It will miss PII and it will over-match plain dates as dates of birth.
+  - Detection is regex-based. It will miss PII and it will over-match: plain dates as birthdates; invoice numbers, ticket IDs, and part numbers as driver's licences (`[A-Z]{1,3}\d{6,10}`); and any 16-digit grouped number as a credit card because there is no Luhn validation.
+  - Specific gaps: IPv6 addresses; international and non-NANP phone numbers (for example, `+44 20 7946 0958`); passport numbers and national ID numbers of any country; dates written day-first (`DD/MM/YYYY`); and SSNs separated by spaces instead of dashes or dots.
   - Names, company names, codenames, and hostnames cannot be reliably pattern-matched. Add them manually or use the always-mask list.
   - The AI provider still receives the masked text and any surrounding context. You are trusting them with the synthetic version.
   - The real→fake mapping lives in your browser tab. Anyone with access to your unlocked machine while the tab is open can reverse the masking.
@@ -75,7 +78,7 @@ You do not have to trust the claims. Check them directly.
 
 ## What is detected
 
-Detection is regex-based. Text mode uses the patterns in `public/app.js`; PDF mode uses the patterns in `src/services/redact.py`. They are similar, but PDF redaction also catches credit cards and requires a DOB/birth context around dates. The PDF redactor does not detect driver's license numbers.
+Detection is regex-based. Text mode uses the patterns in `public/app.js`; PDF mode uses the patterns in `src/services/redact.py`. The two paths are maintained independently, so behaviour can differ. The browser side detects driver's licence numbers and treats `policy` as an account keyword; the PDF side does not detect driver's licences and requires a DOB/birth keyword before a date. Both sides catch SSNs, emails, US-style phone numbers, IPv4 addresses, MRNs, account/patient/member IDs, and credit cards. Do not assume parity between the two engines.
 
 | Type | Example input | Text mask | PDF redaction |
 |---|---|---|---|
