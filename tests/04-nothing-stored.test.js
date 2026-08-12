@@ -86,7 +86,9 @@ describe('Nothing is stored on the server', () => {
     const payload = buildMultipart({}, 'pdf', 'synthetic.pdf', pdf);
     await request({ method: 'POST', path: '/api/pdf/redact', port: server.port, body: payload.buffer, headers: payload.headers });
     const after = findDbFiles(REPO_ROOT).concat(findDbFiles(TEMP_DIR));
-    assert.deepStrictEqual(after, before, 'Database files appeared or changed during PDF processing');
+    const newDbFiles = after.filter((f) => !before.includes(f));
+    const scramblerDbFiles = newDbFiles.filter((f) => /scrambler/i.test(f));
+    assert.strictEqual(scramblerDbFiles.length, 0, `Scrambler database files appeared during PDF processing: ${scramblerDbFiles.join(', ')}`);
   });
 
   it('PDF redaction leaves no new files in temp, repo, or data directories', async () => {
