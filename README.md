@@ -78,21 +78,21 @@ You do not have to trust the claims. Check them directly.
 
 ## What is detected
 
-Detection is regex-based. Text mode uses the patterns in `public/app.js`; PDF mode uses the patterns in `src/services/redact.py`. The two paths are maintained independently, so behaviour can differ. The browser side detects driver's licence numbers and treats `policy` as an account keyword; the PDF side does not detect driver's licences and requires a DOB/birth keyword before a date. Both sides catch SSNs, emails, US-style phone numbers, IPv4 addresses, MRNs, account/patient/member IDs, and credit cards. Do not assume parity between the two engines.
+Detection is regex-based. Text mode uses the patterns in `public/app.js`; PDF mode uses the patterns in `src/services/redact.py`. The two paths are maintained independently, so behaviour can differ. Both sides require a DOB/birth keyword before a date to treat it as a birthdate. The browser side detects driver's licence numbers and treats `policy` as an account keyword; the PDF side does not detect driver's licences. Both sides catch SSNs, emails, US-style phone numbers, IPv4 addresses, MRNs, account/patient/member IDs, and credit cards. Do not assume parity between the two engines.
 
 | Type | Example input | Text mask | PDF redaction |
 |---|---|---|---|
-| SSN | `555-12-3456` | `XXX-XX-1000` | `[REDACTED]` or a black bar |
-| Email | `alice.smith@example.com` | `alex.smith@contoso.com` | `[REDACTED]` or a black bar |
-| Phone | `(555) 987-6543` | `(555) 100-1000` | `[REDACTED]` or a black bar |
-| IP address | `10.0.0.1` | `10.0.0.0` | `[REDACTED]` or a black bar |
+| SSN | `555-12-3456` | `scrambler-A1B2C3-ssn-000` | `[REDACTED]` or a black bar |
+| Email | `alice.smith@example.com` | `scrambler-A1B2C3-person-000@example.org` | `[REDACTED]` or a black bar |
+| Phone | `(555) 987-6543` | `scrambler-A1B2C3-phone-000` | `[REDACTED]` or a black bar |
+| IP address | `10.0.0.1` | `scrambler-A1B2C3-ip-000` | `[REDACTED]` or a black bar |
 | Date of birth | `DOB: 11/22/1990` | `XX/XX/1950` | `[DOB REDACTED]` or a black bar |
-| MRN | `MRN: 12345678` | `MRN-100000` | `[REDACTED]` or a black bar |
-| Account / patient / member ID | `Account: 12345678` | `ACCT-000000` | `[REDACTED]` or a black bar |
-| Credit card | `5555-4444-3333-2222` | `XXXX-XXXX-XXXX-1000` | `[REDACTED]` or a black bar |
-| Driver's license | `DL1234567` | `DL-100000` | not detected |
+| MRN | `MRN: 12345678` | `scrambler-A1B2C3-mrn-000000` | `[REDACTED]` or a black bar |
+| Account / patient / member ID | `Account: 12345678` | `scrambler-A1B2C3-account-000000` | `[REDACTED]` or a black bar |
+| Credit card | `5555-4444-3333-2222` | `scrambler-A1B2C3-cc-000` | `[REDACTED]` or a black bar |
+| Driver's license | `DL1234567` | `scrambler-A1B2C3-dl-000000` | not detected |
 
-The replacement values in text mode rotate through a small pool of synthetic names, companies, domains, and addresses. They are meant to be realistic, not real.
+Text-mode replacements contain a per-session random token (for example `scrambler-A1B2C3-ssn-000`) and emails use an `example.org` domain. They are readable enough for an LLM to process naturally, but deliberately unusual so the model is unlikely to generate the exact same token in unrelated text. When you paste the model's reply and click *Restore*, the UI reports how many values it restored and warns you if any expected replacements are missing, so a collision or reformatted value is reported instead of silently replaced.
 
 ## Tailoring what gets masked
 
