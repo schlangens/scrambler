@@ -1,26 +1,94 @@
-require('dotenv').config();
 const express = require('express');
-const session = require('express-session');
-const passport = require('passport');
-const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const LocalStrategy = require('passport-local').Strategy;
-const bcrypt = require('bcrypt');
 const helmet = require('helmet');
 const path = require('path');
 const multer = require('multer');
-const db = require('./services/database');
 const pdfRedactor = require('./services/pdf-redactor');
 
 const app = express();
 const PORT = process.env.PORT || 3057;
 
+// The app is deployed behind a single reverse proxy. With trust proxy = 1,
+// Express derives req.ip from the address supplied by that proxy (the hop
+// closest to the application), so a forged left-most X-Forwarded-For value
+// cannot affect the rate-limit key.
 app.set('trust proxy', 1);
 
-const ALLOWED_EMAIL = process.env.ALLOWED_EMAIL || 'scott@scottschlangen.com';
-const SESSION_SECRET = process.env.SESSION_SECRET || require('crypto').randomBytes(32).toString('hex');
-const BASE_URL = process.env.BASE_URL || 'https://scramble.scottslab.io';
+// The redaction engine accepts 'text', 'blackout' and 'blackbox'
+// ('blackbox' is an alias for 'blackout' used by the UI radio button).
+const ALLOWED_STYLES = new Set(['text', 'blackout', 'blackbox']);
+const PDF_MAGIC = Buffer.from('%PDF-');
 
-// Multer config - memory storage only (no disk writes)
+// Verify the uploaded bytes actually start with the PDF file signature,
+// not just the client-supplied Content-Type or filename.
+function isPdfBuffer(buffer) {
+  return buffer && buffer.length >= PDF_MAGIC.length && buffer.slice(0, PDF_MAGIC.length).equals(PDF_MAGIC);
+}
+
+function createRateLimiter({ windowMs, maxRequests, maxTracked }) {
+  const hits = new Map();
+
+  // Periodically drop stale entries to keep memory bounded.
+  setInterval(() => {
+    const cutoff = Date.now() - windowMs;
+    for (const [ip, timestamps] of hits) {
+      while (timestamps.length && timestamps[0] <= cutoff) timestamps.shift();
+      if (timestamps.length === 0) hits.delete(ip);
+    }
+  }, windowMs).unref();
+
+  return function rateLimiter(req, res, next) {
+    try {
+      const ip = req.ip;
+      if (!ip) {
+        // Fail-closed: if we cannot determine the client address, the limiter
+        // cannot evaluate the request. 503 is the honest status for that state.
+        return res.status(503).json({ error: 'Rate limiter unavailable' });
+      }
+
+      const now = Date.now();
+      const cutoff = now - windowMs;
+      let timestamps = hits.get(ip);
+      if (timestamps) {
+        while (timestamps.length && timestamps[0] <= cutoff) timestamps.shift();
+        if (timestamps.length === 0) {
+          hits.delete(ip);
+          timestamps = undefined;
+        }
+      }
+
+      // Fail-closed on address-capacity exhaustion: a rotating-IP attacker
+      // (trivial with IPv6) could otherwise grow this map faster than the
+      // cleanup prunes it. Existing tracked addresses keep working; new
+      // addresses are denied once the cap is hit.
+      if (!timestamps && hits.size >= maxTracked) {
+        return res.status(429).json({ error: 'Rate limiter at capacity' });
+      }
+
+      if (!timestamps) timestamps = [];
+
+      if (timestamps.length >= maxRequests) {
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      }
+
+      timestamps.push(now);
+      hits.set(ip, timestamps);
+      next();
+    } catch (err) {
+      // Fail-closed: log only the internal limiter error (no request content),
+      // then deny the request. 503 accurately reports that evaluation failed.
+      console.error('Rate limiter error:', err.message || err);
+      return res.status(503).json({ error: 'Rate limiter unavailable' });
+    }
+  };
+}
+
+// PDF analysis/redaction spawn Python processes and are unauthenticated.
+// Cap each IP at 20 requests per 15 minutes across both endpoints, and cap
+// the total number of tracked addresses to limit memory use under a
+// rotating-IP attack. This complements the 5-concurrent-session and 10MB
+// upload limits.
+const pdfRateLimiter = createRateLimiter({ windowMs: 15 * 60 * 1000, maxRequests: 20, maxTracked: 10000 });
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -28,197 +96,171 @@ const upload = multer({
     files: 1
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
+    if (file.mimetype === 'application/pdf' && file.originalname.toLowerCase().endsWith('.pdf')) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF files are allowed'));
+      cb(new Error('Invalid PDF upload'));
     }
   }
 });
 
-app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"], fontSrc: ["'self'", "https://fonts.gstatic.com"], scriptSrc: ["'self'", "'unsafe-inline'"], scriptSrcAttr: ["'unsafe-inline'"], imgSrc: ["'self'", "data:"] }}}));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(session({ secret: SESSION_SECRET, resave: false, saveUninitialized: false, cookie: { secure: process.env.NODE_ENV === 'production', httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000 }}));
-app.use(passport.initialize());
-app.use(passport.session());
-
-passport.serializeUser((u, d) => d(null, u));
-passport.deserializeUser((u, d) => d(null, u));
-
-passport.use(new GoogleStrategy({ clientID: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET, callbackURL: `${BASE_URL}/auth/google/callback` },
-  (a, r, profile, done) => {
-    const email = profile.emails?.[0]?.value;
-    if (email?.toLowerCase() !== ALLOWED_EMAIL.toLowerCase()) return done(null, false);
-    return done(null, { id: profile.id, email, name: profile.displayName });
-  }
-));
-
-if (process.env.BREAKGLASS_USER && process.env.BREAKGLASS_HASH) {
-  passport.use(new LocalStrategy(async (username, password, done) => {
-    if (username !== process.env.BREAKGLASS_USER) return done(null, false);
-    if (!(await bcrypt.compare(password, process.env.BREAKGLASS_HASH))) return done(null, false);
-    return done(null, { id: 'breakglass', email: 'admin@local', name: 'Admin' });
-  }));
-}
-
-const requireAuth = (req, res, next) => {
-  if (req.isAuthenticated()) return next();
-  // Return JSON for API calls (XHR, JSON accept, or multipart uploads)
-  if (req.xhr || req.headers.accept?.includes('application/json') || req.path.startsWith('/api/')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  res.redirect('/login');
+// Security headers. default-src 'self' covers the end state where session 4
+// has moved all JS/CSS into separate files and removed the Google Fonts link,
+// so the page makes no third-party requests. No 'unsafe-inline' is allowed.
+// upgrade-insecure-requests is only applied in production; it would break the
+// README's plain-HTTP local development flow by trying to load same-origin
+// resources over HTTPS.
+const isProduction = process.env.NODE_ENV === 'production';
+const cspDirectives = {
+  defaultSrc: ["'self'"],
+  scriptSrc: ["'self'"],
+  scriptSrcAttr: ["'none'"],
+  styleSrc: ["'self'"],
+  fontSrc: ["'self'"],
+  imgSrc: ["'self'", "data:"],
+  connectSrc: ["'self'"],
+  objectSrc: ["'none'"],
+  frameAncestors: ["'none'"],
+  baseUri: ["'self'"],
+  formAction: ["'self'"]
 };
+if (isProduction) cspDirectives.upgradeInsecureRequests = [];
 
-// Auth routes
-app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-app.get('/auth/google/callback', passport.authenticate('google', { failureRedirect: '/login?error=1' }), (req, res) => res.redirect('/'));
-app.post('/auth/login', passport.authenticate('local', { failureRedirect: '/login?error=1' }), (req, res) => res.redirect('/'));
-app.post('/auth/logout', (req, res) => { req.logout(() => res.json({ success: true })); });
-app.get('/login', (req, res) => { if (req.isAuthenticated()) return res.redirect('/'); res.sendFile(path.join(__dirname, '../public/login.html')); });
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: cspDirectives
+  },
+  hsts: {
+    maxAge: 15552000,
+    includeSubDomains: true,
+    preload: true
+  },
+  frameguard: { action: 'deny' },
+  noSniff: true,
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin' },
+  crossOriginResourcePolicy: { policy: 'same-origin' },
+  crossOriginEmbedderPolicy: false
+}));
 
-// Text API routes
-app.post('/api/mask', requireAuth, (req, res) => {
-  const { text, sessionId } = req.body;
-  if (!text) return res.status(400).json({ error: 'Text required' });
-  const result = db.autoMask(req.user.id, sessionId || 'default', text);
-  res.json(result);
+// Liveness probe with no sensitive detail.
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
-app.post('/api/unmask', requireAuth, (req, res) => {
-  const { text, sessionId } = req.body;
-  if (!text) return res.status(400).json({ error: 'Text required' });
-  const result = db.unmask(req.user.id, sessionId || 'default', text);
-  res.json(result);
-});
-
-app.post('/api/mappings/add', requireAuth, (req, res) => {
-  const { original, type, sessionId } = req.body;
-  if (!original) return res.status(400).json({ error: 'Original value required' });
-  const mapping = db.addManualMapping(req.user.id, sessionId || 'default', original, type || 'text');
-  res.json(mapping);
-});
-
-app.get('/api/mappings', requireAuth, (req, res) => {
-  const { sessionId } = req.query;
-  res.json(db.getMappings(req.user.id, sessionId));
-});
-
-app.delete('/api/mappings/:id', requireAuth, (req, res) => {
-  const deleted = db.deleteMapping(req.user.id, req.params.id);
-  if (!deleted) return res.status(404).json({ error: 'Not found' });
-  res.json({ success: true });
-});
-
-app.delete('/api/session/:sessionId', requireAuth, (req, res) => {
-  const count = db.clearSession(req.user.id, req.params.sessionId);
-  res.json({ success: true, deleted: count });
-});
-
-// ============ PDF REDACTION ROUTES ============
-
-// Get PDF redaction status (available slots) - public endpoint
+// Public PDF status endpoint.
 app.get('/api/pdf/status', (req, res) => {
   res.json(pdfRedactor.getStatus());
 });
 
-// Process and redact PDF - public endpoint
-app.post('/api/pdf/redact', upload.single('pdf'), async (req, res) => {
+// Process and redact PDF - public endpoint.
+app.post('/api/pdf/redact', pdfRateLimiter, upload.single('pdf'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file uploaded' });
+    if (!req.file || !isPdfBuffer(req.file.buffer)) {
+      return res.status(400).json({ error: 'Invalid PDF file' });
     }
-    
-    // Check if slots available
+
     if (!pdfRedactor.canAcceptSession()) {
-      return res.status(503).json({ 
+      return res.status(503).json({
         error: 'Server busy - maximum concurrent sessions reached',
         status: pdfRedactor.getStatus()
       });
     }
-    
-    // Get style from form data (default: text)
-    const style = req.body.style || 'text';
-    
-    // Process the PDF
+
+    if (req.body.style && !ALLOWED_STYLES.has(req.body.style)) {
+      return res.status(400).json({ error: 'Invalid redaction style' });
+    }
+    const style = ALLOWED_STYLES.has(req.body.style) ? req.body.style : 'text';
+
     const result = await pdfRedactor.processPdf(req.file.buffer, style);
-    
-    // Clear the buffer immediately
     req.file.buffer = null;
-    
-    // Send redacted PDF
+
     res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="redacted-${Date.now()}.pdf"`);
+    res.setHeader('Content-Disposition', 'attachment; filename="redacted.pdf"');
     res.setHeader('X-Detections-Count', result.detections.length);
     res.setHeader('X-Original-Pages', result.originalPageCount);
+    res.setHeader('X-Has-Unchecked-Pages', result.hasUncheckedPages ? 'true' : 'false');
+    res.setHeader('X-Pages-Without-Text', JSON.stringify(result.pagesWithoutText || []));
     res.send(result.pdfBuffer);
-    
-    // Clear result buffer
+
     result.pdfBuffer = null;
-    
   } catch (error) {
-    console.error('PDF processing error:', error.message);
-    res.status(500).json({ error: error.message });
+    // Server-side only: log the error for debugging. Never expose internal
+    // detail to the client and never log file contents or detected values.
+    console.error('PDF redaction error:', error.message || error);
+    res.status(500).json({ error: 'PDF processing failed' });
   }
 });
 
-// Process PDF and return JSON with preview (for UI) - public endpoint
-app.post('/api/pdf/analyze', upload.single('pdf'), async (req, res) => {
+// Process PDF and return JSON analysis (with base64 download) - public endpoint.
+app.post('/api/pdf/analyze', pdfRateLimiter, upload.single('pdf'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No PDF file uploaded' });
+    if (!req.file || !isPdfBuffer(req.file.buffer)) {
+      return res.status(400).json({ error: 'Invalid PDF file' });
     }
-    
+
     if (!pdfRedactor.canAcceptSession()) {
-      return res.status(503).json({ 
+      return res.status(503).json({
         error: 'Server busy - maximum concurrent sessions reached',
         status: pdfRedactor.getStatus()
       });
     }
-    
-    // Get style from form data (default: text)
-    const style = req.body.style || 'text';
-    
+
+    if (req.body.style && !ALLOWED_STYLES.has(req.body.style)) {
+      return res.status(400).json({ error: 'Invalid redaction style' });
+    }
+    const style = ALLOWED_STYLES.has(req.body.style) ? req.body.style : 'text';
+
     const result = await pdfRedactor.processPdf(req.file.buffer, style);
-    
-    // Clear buffers
     req.file.buffer = null;
-    
-    // Return analysis without the full PDF (just base64 for download)
+
     const pdfBase64 = result.pdfBuffer.toString('base64');
     result.pdfBuffer = null;
-    
+
     res.json({
       success: true,
       originalPageCount: result.originalPageCount,
       newPageCount: result.newPageCount,
       detections: result.detections,
+      pagesWithoutText: result.pagesWithoutText || [],
+      uncheckedPages: result.pagesWithoutText || [],
+      hasUncheckedPages: Boolean(result.hasUncheckedPages),
       charCount: result.charCount,
       redactedCharCount: result.redactedCharCount,
       pdfBase64: pdfBase64
     });
-    
   } catch (error) {
-    console.error('PDF analysis error:', error.message);
-    res.status(500).json({ error: error.message });
+    console.error('PDF analysis error:', error.message || error);
+    res.status(500).json({ error: 'PDF processing failed' });
   }
 });
 
-// Error handler for multer
+// Error handler for multer and other unexpected errors.
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
       return res.status(400).json({ error: 'File too large. Maximum size is 10MB.' });
     }
-    return res.status(400).json({ error: error.message });
+    return res.status(400).json({ error: 'File upload error' });
   }
-  if (error.message === 'Only PDF files are allowed') {
-    return res.status(400).json({ error: error.message });
+  if (error.message === 'Invalid PDF upload') {
+    return res.status(400).json({ error: 'Only PDF files are allowed' });
   }
-  next(error);
+  console.error('Unhandled error:', error.message || error);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 app.use(express.static(path.join(__dirname, '../public')));
 
-app.listen(PORT, () => console.log(`Scrambler running on port ${PORT}`));
+// Anything not matched (including removed legacy routes) returns 404.
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+const server = app.listen(PORT, () => {
+  // OK: only the listening port is logged; no request data or PII.
+  console.log(`Scrambler server listening on port ${PORT}`);
+});
+
+module.exports = { app, server };
