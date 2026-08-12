@@ -46,7 +46,7 @@ This is the section a security reviewer should read first.
   - The AI provider still receives the masked text and any surrounding context. You are trusting them with the synthetic version.
   - The real→fake mapping lives in your browser tab. Anyone with access to your unlocked machine while the tab is open can reverse the masking.
   - A hosted instance is only as trustworthy as its operator. Audit the source, run it locally, or use the offline copy.
-  - **Scanned or image-only PDFs.** A page that is just a picture of text has no extractable text layer, so the redactor has nothing to search and the page is returned unchanged. A scanned document can report zero detections and still contain personal data in the images. The redactor reports which pages had no readable text, and the interface warns you when a document contains them.
+  - **Scanned or image-only PDFs.** A page that is just a picture of text has no extractable text layer, so the redactor has nothing to search and the page is returned unchanged. A scanned document can report zero detections and still contain personal data in the images.
 
 ## Verify it yourself
 
@@ -145,7 +145,7 @@ The application reads only these environment variables:
 |---|---|---|
 | `PORT` | HTTP port | `3057` |
 | `SCRAMBLER_REDACT_TIMEOUT_MS` | PDF redactor child timeout in milliseconds | `60000` |
-| `SCRAMBLER_MAX_FILE_SIZE` | Maximum PDF upload size in bytes | `10485760` (10 MB) |
+| `SCRAMBLER_MAX_FILE_SIZE` | Maximum PDF payload size (in bytes) that the Python redactor will accept. The Node.js `multer` limit is hardcoded to 10 MB in `src/services/pdf-redactor.js`, so this variable can only lower the effective limit; raising it above 10 MB has no effect. | `10485760` (10 MB) |
 
 There are no database connection strings, authentication secrets, or API keys. The server starts without a `.env` file.
 
