@@ -23,8 +23,8 @@
   const PATTERNS = [
     { type: 'ssn', regex: /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, label: 'SSN' },
     { type: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: 'Email' },
-    { type: 'phone', regex: /(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/g, label: 'Phone' },
-    { type: 'ip', regex: /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/g, label: 'IP' },
+    { type: 'phone', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)/g, label: 'Phone' },
+    { type: 'ip', regex: /(?<!\d\.)(?<![0-9])\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b(?!\.\d)/g, label: 'IP' },
     { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, label: 'DOB' },
     { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
     { type: 'account', regex: /\b(?:account|acct|patient id|member id|policy)[:\s#]*\d{4,12}\b/gi, label: 'Account' },
@@ -91,6 +91,25 @@
     return intervals;
   }
 
+  const DOB_CONTEXT_RE = /(?:^|[^a-zA-Z.])D\.?O\.?B\.?(?:[:\s.,;]|$)|\bDate of Birth\b|\bBirth\s*Date\b|\bborn\b/i;
+  function hasDobContext(text, s, e) {
+    const window = (text.slice(Math.max(0, s - 40), Math.min(text.length, e + 40)) || '');
+    return DOB_CONTEXT_RE.test(window);
+  }
+
+  function applyMasks(text, accepted, mapList = mappings) {
+    const sorted = [...accepted].sort((a, b) => a.start - b.start);
+    let out = '', pos = 0;
+    for (const c of sorted) {
+      out += text.slice(pos, c.start);
+      const m = mapList.find(x => x.original === c.original);
+      out += m ? m.masked : c.original;
+      pos = c.end;
+    }
+    out += text.slice(pos);
+    return out;
+  }
+
   // Exclusions take precedence over both pattern detection and the always-mask list.
   function findCandidates(text) {
     const exclusions = getExclusionIntervals(text), candidates = [];
@@ -99,6 +118,7 @@
       for (const m of text.matchAll(p.regex)) {
         const s = m.index, e = s + m[0].length;
         if (overlaps(s, e, exclusions)) continue;
+        if (p.type === 'dob' && !hasDobContext(text, s, e)) continue;
         candidates.push({ start: s, end: e, original: m[0], type: p.type, label: p.label });
       }
     }
@@ -129,10 +149,7 @@
       if (existing) { existing.type = c.label; }
       else { mappings.push({ id: uid(), original: c.original, masked: generateFake(c.type), type: c.label }); }
     }
-    const active = accepted.map(c => mappings.find(m => m.original === c.original)).filter(Boolean).sort((a, b) => b.original.length - a.original.length);
-    let result = text;
-    for (const m of active) result = result.split(m.original).join(m.masked);
-    $('masked-text').value = result;
+    $('masked-text').value = applyMasks(text, accepted);
     show(['masked-card', 'arrow-divider', 'response-card']);
     hide('final-card');
     $('llm-response').value = '';
@@ -155,10 +172,8 @@
     mappings = mappings.filter(m => m.id !== id);
     const text = $('input-text').value;
     if (text.trim()) {
-      const active = [...mappings].sort((a, b) => b.original.length - a.original.length);
-      let result = text;
-      for (const m of active) result = result.split(m.original).join(m.masked);
-      $('masked-text').value = result;
+      const accepted = findCandidates(text);
+      $('masked-text').value = applyMasks(text, accepted);
     }
     renderDetected();
     updateCounts();
