@@ -32,7 +32,7 @@ PDF mode (one upload, server-side)
                 └────── redacted bytes ────────┘
 ```
 
-Two PDF endpoints are available. `POST /api/pdf/redact` returns the redacted PDF as a binary `application/pdf` download (`Content-Disposition: attachment; filename="redacted.pdf"`). `POST /api/pdf/analyze` returns the same redacted PDF as `pdfBase64` plus JSON metadata: `detections`, `originalPageCount`, `newPageCount`, `charCount`, and `redactedCharCount`.
+Two PDF endpoints are available. `POST /api/pdf/redact` returns the redacted PDF as a binary `application/pdf` download (`Content-Disposition: attachment; filename="redacted.pdf"`). `POST /api/pdf/analyze` returns the same redacted PDF as `pdfBase64` plus JSON metadata including `detections`, `originalPageCount`, `newPageCount`, `pagesWithoutText`, `hasUncheckedPages`, `charCount`, and `redactedCharCount`.
 
 ## Privacy and threat model
 
@@ -43,13 +43,14 @@ This is the section a security reviewer should read first.
 - **What is logged.** Server logs contain only the listening port, rate-limiter metadata, and generic error categories such as `PDF processing failed` or `Internal server error`. The Python redactor’s `stderr` is discarded. Request bodies, file contents, detected values, and original text are never logged.
 - **What happens client-side.** `public/app.js` performs all detection, mapping, masking, and unmasking in JavaScript. The mapping array lives in the page’s memory and is gone when the tab closes.
 - **What this does not protect against.**
-  - Detection is regex-based. It will miss PII and it will over-match: plain dates as birthdates; invoice numbers, ticket IDs, and part numbers as driver's licences (`[A-Z]{1,3}\d{6,10}`); and any 16-digit grouped number as a credit card because there is no Luhn validation.
-  - Specific gaps: IPv6 addresses; international and non-NANP phone numbers (for example, `+44 20 7946 0958`); passport numbers and national ID numbers of any country; dates written day-first (`DD/MM/YYYY`); and SSNs separated by spaces instead of dashes or dots.
+  - Detection is regex-based. It will miss PII and it will over-match: invoice numbers, ticket IDs, and part numbers as driver's licences (`[A-Z]{1,3}\d{6,10}`); and any 16-digit grouped number as a credit card because there is no Luhn validation.
+  - Dates of birth are only matched when a keyword such as `DOB`, `Date of Birth`, `Birth Date`, or `born` appears with a month-first date. Day-first dates (`DD/MM/YYYY`) and standalone dates are missed.
+  - Specific gaps: IPv6 addresses; international and non-NANP phone numbers (for example, `+44 20 7946 0958`); passport numbers and national ID numbers of any country; and SSNs separated by spaces instead of dashes or dots.
   - Names, company names, codenames, and hostnames cannot be reliably pattern-matched. Add them manually or use the always-mask list.
   - The AI provider still receives the masked text and any surrounding context. You are trusting them with the synthetic version.
   - The real→fake mapping lives in your browser tab. Anyone with access to your unlocked machine while the tab is open can reverse the masking.
   - A hosted instance is only as trustworthy as its operator. Audit the source, run it locally, or use the offline copy.
-  - **Scanned or image-only PDFs.** A page that is just a picture of text has no extractable text layer, so the redactor has nothing to search and the page is returned unchanged. A scanned document can report zero detections and still contain personal data in the images.
+  - **Scanned or image-only PDFs.** A page that is just a picture of text has no extractable text layer, so the redactor has nothing to search and the page is returned unchanged. The response includes `pagesWithoutText` and `hasUncheckedPages`, and the UI warns when a document contains them. A fully scanned document can still report zero detections and contain personal data in the images.
 
 ## Verify it yourself
 
@@ -78,21 +79,21 @@ You do not have to trust the claims. Check them directly.
 
 ## What is detected
 
-Detection is regex-based. Text mode uses the patterns in `public/app.js`; PDF mode uses the patterns in `src/services/redact.py`. The two paths are maintained independently, so behaviour can differ. Both sides require a DOB/birth keyword before a date to treat it as a birthdate. The browser side detects driver's licence numbers and treats `policy` as an account keyword; the PDF side does not detect driver's licences. Both sides catch SSNs, emails, US-style phone numbers, IPv4 addresses, MRNs, account/patient/member IDs, and credit cards. Do not assume parity between the two engines.
+Detection is regex-based. Text mode uses the patterns in `public/app.js`; PDF mode uses the patterns in `src/services/redact.py`. The two paths are independent code, so behaviour can diverge. After the latest pattern unification they are aligned on SSNs, emails, US-style phone numbers, IPv4 addresses, MRNs, account/patient/member/policy IDs, credit cards, and month-first dates of birth that appear with a keyword (`DOB`, `Date of Birth`, `Birth Date`, `born`, or similar). The remaining known difference is that the browser side detects driver's licence numbers and the PDF side does not. Do not assume parity between the two engines.
 
 | Type | Example input | Text mask | PDF redaction |
 |---|---|---|---|
-| SSN | `555-12-3456` | `scrambler-A1B2C3-ssn-000` | `[REDACTED]` or a black bar |
-| Email | `alice.smith@example.com` | `scrambler-A1B2C3-person-000@example.org` | `[REDACTED]` or a black bar |
-| Phone | `(555) 987-6543` | `scrambler-A1B2C3-phone-000` | `[REDACTED]` or a black bar |
-| IP address | `10.0.0.1` | `scrambler-A1B2C3-ip-000` | `[REDACTED]` or a black bar |
+| SSN | `555-12-3456` | `XXX-XX-1000` | `[REDACTED]` or a black bar |
+| Email | `alice.smith@contoso.com` | `marlow.quintrell@bexley-harrow.example` | `[REDACTED]` or a black bar |
+| Phone | `(555) 987-6543` | `(555) 100-1000` | `[REDACTED]` or a black bar |
+| IP address | `10.0.0.1` | `192.0.2.1` | `[REDACTED]` or a black bar |
 | Date of birth | `DOB: 11/22/1990` | `XX/XX/1950` | `[DOB REDACTED]` or a black bar |
-| MRN | `MRN: 12345678` | `scrambler-A1B2C3-mrn-000000` | `[REDACTED]` or a black bar |
-| Account / patient / member ID | `Account: 12345678` | `scrambler-A1B2C3-account-000000` | `[REDACTED]` or a black bar |
-| Credit card | `5555-4444-3333-2222` | `scrambler-A1B2C3-cc-000` | `[REDACTED]` or a black bar |
-| Driver's license | `DL1234567` | `scrambler-A1B2C3-dl-000000` | not detected |
+| MRN | `MRN: 12345678` | `MRN-100000` | `[REDACTED]` or a black bar |
+| Account / patient / member / policy ID | `Policy: 12345678` | `ACCT-100000` | `[REDACTED]` or a black bar |
+| Credit card | `5555-4444-3333-2222` | `XXXX-XXXX-XXXX-1000` | `[REDACTED]` or a black bar |
+| Driver's license | `DL1234567` | `DL-100000` | not detected |
 
-Text-mode replacements contain a per-session random token (for example `scrambler-A1B2C3-ssn-000`) and emails use an `example.org` domain. They are readable enough for an LLM to process naturally, but deliberately unusual so the model is unlikely to generate the exact same token in unrelated text. When you paste the model's reply and click *Restore*, the UI reports how many values it restored and warns you if any expected replacements are missing, so a collision or reformatted value is reported instead of silently replaced.
+The browser's fake values rotate through pools of 16 invented first names, surnames, company names, and `.example` domains, plus structured identifiers shaped like `XXX-XX-1234`, `(555) 100-1000`, and `192.0.2.x` (the TEST-NET-1 documentation range). They are meant to look natural to the model while being unlikely to appear in the model's own output. When you paste the model's reply and click *Restore*, the UI reports how many values it restored and lists any it could not find, so a collision, reformatting, or missing value is reported instead of silently replaced.
 
 ## Tailoring what gets masked
 
