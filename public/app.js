@@ -11,22 +11,19 @@
 
   const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
-  const FAKE = {
-    companies: ['Contoso','Fabrikam','Northwind','Adventure Works','Woodgrove','Tailspin'],
-    firstNames: ['Alex','Jordan','Taylor','Morgan','Casey','Riley','Quinn','Avery'],
-    lastNames: ['Smith','Johnson','Williams','Brown','Jones','Miller','Davis','Wilson'],
-    domains: ['contoso.com','fabrikam.com','example.org','test.net'],
-    streets: ['Main St','Oak Ave','Elm Dr','Park Blvd','Cedar Ln'],
-    cities: ['Springfield','Riverside','Fairview','Madison','Georgetown']
-  };
+  // A per-session random token embedded in every masked value. This makes it
+  // vanishingly unlikely that an LLM will spontaneously write the exact same
+  // string in unrelated text, which would cause unmaskText() to corrupt that
+  // text. Values stay readable (Placeholder-Company-TOKEN-001 style).
+  const SCRAMBLER_TOKEN = Math.random().toString(36).slice(2, 8).toUpperCase();
 
   const PATTERNS = [
     { type: 'ssn', regex: /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, label: 'SSN' },
     { type: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: 'Email' },
     { type: 'phone', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)/g, label: 'Phone' },
     { type: 'ip', regex: /(?<!\d\.)(?<![0-9])\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b(?!\.\d)/g, label: 'IP' },
-    { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, label: 'DOB' },
-    { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
+    { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])[/-](?:0?[1-9]|[12]\d|3[01])[/-](?:\d{2}|\d{4})\b/g, label: 'DOB' },
+    { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record(?:\s*(?:Number|No|#))?)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
     { type: 'account', regex: /\b(?:account|acct|patient id|member id|policy)[:\s#]*\d{4,12}\b/gi, label: 'Account' },
     { type: 'creditCard', regex: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g, label: 'Credit Card' },
     { type: 'driversLicense', regex: /\b[A-Z]{1,3}\d{6,10}\b/gi, label: 'License' }
@@ -66,20 +63,22 @@
   function uid() { return 'a' + Math.random().toString(36).slice(2, 9); }
   function getNext(k) { if (!counters[k]) counters[k] = 0; return counters[k]++; }
 
+  function fakeSuffix(k, width = 3) { return String(getNext(k)).padStart(width, '0'); }
+
   function generateFake(type) {
     switch (type) {
-      case 'email': return `${FAKE.firstNames[getNext('fn')%FAKE.firstNames.length].toLowerCase()}.${FAKE.lastNames[getNext('ln')%FAKE.lastNames.length].toLowerCase()}@${FAKE.domains[getNext('dom')%FAKE.domains.length]}`;
-      case 'phone': return `(555) ${String(100+getNext('p1')%900).padStart(3,'0')}-${String(1000+getNext('p2')%9000).padStart(4,'0')}`;
-      case 'ssn': return `XXX-XX-${String(1000+getNext('ssn')%9000)}`;
-      case 'name': return `${FAKE.firstNames[getNext('n1')%FAKE.firstNames.length]} ${FAKE.lastNames[getNext('n2')%FAKE.lastNames.length]}`;
-      case 'company': return FAKE.companies[getNext('co')%FAKE.companies.length];
-      case 'ip': return `10.${getNext('ip1')%256}.${getNext('ip2')%256}.${getNext('ip3')%256}`;
+      case 'email': return `scrambler-${SCRAMBLER_TOKEN}-person-${fakeSuffix('em')}@example.org`;
+      case 'phone': return `scrambler-${SCRAMBLER_TOKEN}-phone-${fakeSuffix('ph')}`;
+      case 'ssn': return `scrambler-${SCRAMBLER_TOKEN}-ssn-${fakeSuffix('ssn')}`;
+      case 'name': return `scrambler-${SCRAMBLER_TOKEN}-person-${fakeSuffix('nm')}`;
+      case 'company': return `scrambler-${SCRAMBLER_TOKEN}-company-${fakeSuffix('co')}`;
+      case 'ip': return `scrambler-${SCRAMBLER_TOKEN}-ip-${fakeSuffix('ip')}`;
       case 'dob': return `XX/XX/${1950+getNext('dob')%50}`;
-      case 'mrn': return `MRN-${100000+getNext('mrn')%900000}`;
-      case 'account': return `ACCT-${String(getNext('acct')).padStart(6,'0')}`;
-      case 'creditCard': return `XXXX-XXXX-XXXX-${String(1000+getNext('cc')%9000)}`;
-      case 'driversLicense': return `DL-${String(100000+getNext('dl')%900000)}`;
-      default: return `[REDACTED-${Math.random().toString(36).slice(2,6).toUpperCase()}]`;
+      case 'mrn': return `scrambler-${SCRAMBLER_TOKEN}-mrn-${fakeSuffix('mrn', 6)}`;
+      case 'account': return `scrambler-${SCRAMBLER_TOKEN}-account-${fakeSuffix('acct', 6)}`;
+      case 'creditCard': return `scrambler-${SCRAMBLER_TOKEN}-cc-${fakeSuffix('cc')}`;
+      case 'driversLicense': return `scrambler-${SCRAMBLER_TOKEN}-dl-${fakeSuffix('dl', 6)}`;
+      default: return `scrambler-${SCRAMBLER_TOKEN}-redacted-${fakeSuffix('red')}`;
     }
   }
 
@@ -184,12 +183,18 @@
     const text = $('llm-response').value.trim();
     if (!text) { setStatus('text-status', 'Please paste the LLM response first.', 'error'); return; }
     const sorted = [...mappings].sort((a, b) => b.masked.length - a.masked.length);
+    const found = new Set(), missing = [];
+    for (const m of sorted) if (text.includes(m.masked)) found.add(m.id);
+    for (const m of mappings) if (!found.has(m.id)) missing.push(m);
     let result = text;
     for (const m of sorted) result = result.split(m.masked).join(m.original);
     $('final-text').value = result;
     show('final-card');
-    setStatus('text-status', 'Original values restored.', 'success');
-    announce('Original values restored.');
+    const total = mappings.length;
+    const msg = `Restored ${found.size} of ${total} value${total === 1 ? '' : 's'}.`;
+    const detail = missing.length ? ` Not found: ${missing.slice(0, 3).map(m => m.type || m.original).join(', ')}${missing.length > 3 ? '...' : ''}.` : '';
+    setStatus('text-status', msg + detail, missing.length ? 'warning' : 'success');
+    announce(msg + detail);
   }
 
   async function copyTo(textareaId, successMessage) {
