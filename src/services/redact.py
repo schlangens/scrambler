@@ -32,6 +32,27 @@ import os
 import re
 import sys
 
+# ---------------------------------------------------------------------------
+# Protocol stdout isolation
+#
+# The Node side expects a clean binary length-prefixed stream on the child's
+# stdout. PyMuPDF's legacy `import fitz` and other libraries or future
+# dependencies may write warnings or debug text to stdout, which would corrupt
+# the first 8-byte length prefix and produce an "invalid redactor response"
+# error. To make stdout purity a guarantee rather than an assumption, we:
+#
+#   1. Duplicate the real stdout file descriptor (the pipe back to Node).
+#   2. Redirect the C-level stdout fd (1) to stderr, so C library writes go
+#      to stderr instead of the protocol stream.
+#   3. Repoint sys.stdout at sys.stderr, so Python-level prints do the same.
+#
+# The framed response is then written exclusively through the saved fd.
+# This block runs before any imports that might write to stdout.
+# ---------------------------------------------------------------------------
+_PROTOCOL_OUT = os.dup(sys.stdout.fileno())
+os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+sys.stdout = sys.stderr
+
 try:
     import pymupdf as fitz  # type: ignore
 except ImportError:  # pragma: no cover
@@ -111,14 +132,22 @@ def _read_length_prefixed(stream):
     return _read_exact(stream, length)
 
 
-def _write_response(stream, pdf_bytes, meta):
-    """Write a length-prefixed PDF + JSON metadata response to the stream."""
+def _write_all(fd, data):
+    """Write all bytes to a file descriptor, handling partial writes."""
+    while data:
+        n = os.write(fd, data)
+        if n == 0:
+            raise RedactionError("Unable to write complete response")
+        data = data[n:]
+
+
+def _write_response(pdf_bytes, meta):
+    """Write a length-prefixed PDF + JSON metadata response to the real stdout."""
     meta_bytes = json.dumps(meta, separators=(",", ":")).encode("utf-8")
-    stream.write(len(pdf_bytes).to_bytes(8, "big"))
-    stream.write(pdf_bytes)
-    stream.write(len(meta_bytes).to_bytes(8, "big"))
-    stream.write(meta_bytes)
-    stream.flush()
+    _write_all(_PROTOCOL_OUT, len(pdf_bytes).to_bytes(8, "big"))
+    _write_all(_PROTOCOL_OUT, pdf_bytes)
+    _write_all(_PROTOCOL_OUT, len(meta_bytes).to_bytes(8, "big"))
+    _write_all(_PROTOCOL_OUT, meta_bytes)
 
 
 def _validate_pdf(data):
@@ -311,16 +340,16 @@ def main():
     try:
         pdf_bytes = _read_length_prefixed(sys.stdin.buffer)
         output_bytes, meta = redact_pdf(pdf_bytes, style)
-        _write_response(sys.stdout.buffer, output_bytes, meta)
+        _write_response(output_bytes, meta)
     except RedactionError as exc:
         # These are our own safe messages (type/page only, never matched text).
         error_meta = {"success": False, "error": str(exc), "detections": []}
-        _write_response(sys.stdout.buffer, b"", error_meta)
+        _write_response(b"", error_meta)
     except Exception:
         # Unexpected PyMuPDF / system exceptions may contain document content.
         # Do not forward their raw text to the caller.
         error_meta = {"success": False, "error": "Internal redaction error", "detections": []}
-        _write_response(sys.stdout.buffer, b"", error_meta)
+        _write_response(b"", error_meta)
 
 
 if __name__ == "__main__":
