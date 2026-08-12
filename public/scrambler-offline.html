@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Scrambler masks PII in text locally in your browser. This offline copy requires no network connection and sends nothing to any server.">
+  <title>Scrambler - Anonymize Data for LLMs</title>
+  
+  <style>
+:root {
+  --black: #0a0a0f;
+  --dark: #0d0d14;
+  --darker-blue: #0f1729;
+  --blue-dim: #1a2744;
+  --blue: #2563eb;
+  --blue-bright: #3b82f6;
+  --text: #e2e8f0;
+  --text-dim: #94a3b8;
+  --text-muted: #64748b;
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #eab308;
+  --orange: #f97316;
+  --font-ui: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--black);
+  color: var(--text);
+  font-family: var(--font-ui);
+  min-height: 100vh;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+.sr-only,
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: var(--blue);
+  color: #fff;
+  padding: .5rem 1rem;
+  z-index: 100;
+  text-decoration: none;
+  border-radius: 0 0 6px 0;
+}
+.skip-link:focus { top: 0; }
+
+.bg {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 50% at 20% -20%, rgba(37,99,235,.12) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+header {
+  padding: 1rem 2rem;
+  border-bottom: 1px solid rgba(37,99,235,.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(10,10,15,.9);
+  position: relative;
+  z-index: 10;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.logo {
+  font-weight: 600;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+}
+.logo a { color: inherit; text-decoration: none; }
+.logo a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 3px; border-radius: 4px; }
+.logo-name { color: var(--blue-bright); }
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.hero {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, rgba(15,23,41,.6), rgba(13,13,20,.8));
+  border: 1px solid rgba(37,99,235,.15);
+  border-radius: 12px;
+}
+.hero h1 { font-size: 1.5rem; margin-bottom: .5rem; }
+.hero p { color: var(--text-dim); font-size: .95rem; }
+
+.security-notice {
+  background: rgba(34,197,94,.1);
+  border: 1px solid rgba(34,197,94,.3);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.security-notice .icon { font-size: 1.5rem; flex-shrink: 0; }
+.security-notice h2 { color: var(--green); font-size: .95rem; margin-bottom: .25rem; }
+.security-notice p { font-size: .85rem; color: var(--text-dim); line-height: 1.5; }
+.security-notice a { color: var(--blue-bright); }
+.steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+.step { display: flex; align-items: flex-start; gap: .75rem; }
+.step-num {
+  width: 24px;
+  height: 24px;
+  background: var(--blue);
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .8rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.step-text { font-size: .85rem; color: var(--text-dim); line-height: 1.4; }
+.step-text strong { color: var(--text); font-weight: 600; }
+
+.card {
+  background: linear-gradient(135deg, rgba(15,23,41,.6), rgba(13,13,20,.8));
+  border: 1px solid rgba(37,99,235,.15);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+}
+.card-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(37,99,235,.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+}
+.card-header h2 { font-size: 1rem; font-weight: 500; }
+.card-body { padding: 1.25rem; }
+
+.btn {
+  padding: .65rem 1.25rem;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: .9rem;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  background: transparent;
+  color: var(--text);
+  text-decoration: none;
+}
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 2px; }
+.btn-primary { background: var(--blue); color: #fff; }
+.btn-primary:hover:not(:disabled) { background: var(--blue-bright); }
+.btn-success { background: var(--green); color: #fff; }
+.btn-success:hover:not(:disabled) { background: #16a34a; }
+.btn-ghost { color: var(--text-dim); border: 1px solid var(--text-muted); }
+.btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--text-dim); }
+.btn-danger { color: var(--red); border: 1px solid rgba(239,68,68,.3); }
+.btn-danger:hover:not(:disabled) { background: rgba(239,68,68,.1); }
+.btn-sm { padding: .4rem .75rem; font-size: .8rem; }
+
+.hint { font-size: .85rem; color: var(--text-dim); margin-top: .75rem; }
+.hint-inline { font-size: .85rem; color: var(--text-dim); margin-left: .5rem; }
+
+.action-row { display: flex; align-items: center; gap: .75rem; margin-top: 1rem; flex-wrap: wrap; }
+
+fieldset { border: none; }
+legend { font-size: .85rem; color: var(--text-dim); margin-bottom: .75rem; }
+
+.radio-label,
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  cursor: pointer;
+  font-size: .9rem;
+}
+.radio-label input,
+.checkbox-label input { accent-color: var(--blue); cursor: pointer; }
+
+textarea {
+  width: 100%;
+  padding: 1rem;
+  background: var(--black);
+  border: 1px solid rgba(37,99,235,.2);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: .9rem;
+  outline: none;
+  resize: vertical;
+  min-height: 150px;
+  max-width: 100%;
+}
+textarea::placeholder { color: var(--text-dim); opacity: .7; }
+textarea:focus-visible { border-color: var(--blue); outline: 2px solid var(--blue-bright); outline-offset: 2px; }
+textarea[readonly] { background: var(--darker-blue); }
+
+input[type="text"],
+input[type="file"],
+select {
+  padding: .6rem;
+  background: var(--black);
+  border: 1px solid rgba(37,99,235,.2);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: .9rem;
+  outline: none;
+  max-width: 100%;
+}
+input[type="text"]:focus-visible,
+select:focus-visible { border-color: var(--blue); outline: 2px solid var(--blue-bright); outline-offset: 2px; }
+select { background: var(--darker-blue); font-family: inherit; }
+
+.config-section { margin-top: 1.25rem; }
+.config-section h3 { font-size: .9rem; color: var(--text-dim); margin-bottom: .75rem; font-weight: 500; }
+.preset-row { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .5rem; }
+.preset.active { background: rgba(37,99,235,.25); border-color: var(--blue); color: var(--text); }
+
+.config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: .75rem; }
+.toggle-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: .5rem .6rem;
+  background: rgba(0,0,0,.2);
+  border-radius: 6px;
+  border: 1px solid transparent;
+  transition: border-color .15s;
+}
+.toggle-item.emphasised { border-left: 3px solid var(--green); }
+.toggle-item.disabled { opacity: .6; }
+.toggle-item label { display: flex; align-items: center; gap: .5rem; cursor: pointer; font-size: .9rem; flex: 1; }
+.toggle-item input[type="checkbox"] { width: 1.1rem; height: 1.1rem; accent-color: var(--blue); cursor: pointer; }
+
+.badge {
+  font-size: .7rem;
+  padding: .2rem .5rem;
+  border-radius: 4px;
+  margin-left: .4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+}
+.badge-count { background: var(--green); color: #fff; }
+.badge-count.empty { background: var(--text-muted); }
+.badge-type { background: var(--blue-dim); color: var(--blue-bright); }
+
+.list-add-row { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; }
+.list-add-row input { flex: 1; min-width: 160px; font-family: var(--font-mono); }
+
+.term-list { list-style: none; margin-top: .75rem; }
+.term-list li {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .4rem 0;
+  border-bottom: 1px solid rgba(37,99,235,.1);
+  font-size: .85rem;
+  flex-wrap: wrap;
+}
+.term-list li:last-child { border-bottom: none; }
+.term-list .view,
+.term-list .edit { display: flex; align-items: center; gap: .5rem; flex: 1; flex-wrap: wrap; }
+.term-list .term-text { font-family: var(--font-mono); color: var(--text); word-break: break-word; }
+.term-list .edit { display: none; }
+.term-list .editing .view { display: none; }
+.term-list .editing .edit { display: flex; }
+.term-list .match-count { margin-left: auto; color: var(--text-dim); font-size: .75rem; }
+
+.persist-section {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  background: rgba(0,0,0,.2);
+  border-radius: 8px;
+}
+.persist-section p { margin-top: .5rem; margin-left: 1.5rem; }
+
+.detected-list {
+  list-style: none;
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(0,0,0,.3);
+  border-radius: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.detected-list li {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .5rem 0;
+  border-bottom: 1px solid rgba(37,99,235,.1);
+  font-size: .85rem;
+  flex-wrap: wrap;
+}
+.detected-list li:last-child { border-bottom: none; }
+.detected-type { font-size: .7rem; padding: .2rem .5rem; background: var(--blue-dim); border-radius: 4px; color: var(--blue-bright); min-width: 50px; text-align: center; }
+.detected-original { font-family: var(--font-mono); color: var(--red); text-decoration: line-through; opacity: .8; word-break: break-word; }
+.detected-arrow { color: var(--text-muted); }
+.detected-masked { font-family: var(--font-mono); color: var(--green); word-break: break-word; }
+.detected-delete { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: .25rem; margin-left: auto; font-size: 1rem; line-height: 1; }
+.detected-delete:hover { color: var(--red); }
+.detected-delete:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; border-radius: 4px; }
+
+.arrow-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  color: var(--text-muted);
+  font-size: 1.25rem;
+}
+
+.status-region {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  padding: .75rem 1rem;
+  border-radius: 8px;
+  font-size: .9rem;
+  margin-top: 1rem;
+  border: 1px solid transparent;
+}
+.status-region.hidden { display: none; }
+.status-region.processing { background: rgba(234,179,8,.1); color: var(--yellow); border-color: rgba(234,179,8,.3); }
+.status-region.success { background: rgba(34,197,94,.1); color: var(--green); border-color: rgba(34,197,94,.3); }
+.status-region.error { background: rgba(239,68,68,.1); color: var(--red); border-color: rgba(239,68,68,.3); }
+.status-region.info { background: rgba(37,99,235,.1); color: var(--blue-bright); border-color: rgba(37,99,235,.3); }
+.status-region.warning { background: rgba(249,115,22,.1); color: var(--orange); border-color: rgba(249,115,22,.3); }
+
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+footer { text-align: center; padding: 2rem; color: var(--text-dim); font-size: .8rem; border-top: 1px solid rgba(37,99,235,.1); margin-top: 2rem; }
+footer p { margin-bottom: .25rem; }
+footer a { color: var(--blue-bright); text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+footer a:focus-visible { outline: 2px solid var(--blue-bright); outline-offset: 2px; border-radius: 2px; }
+
+.hidden { display: none !important; }
+.more { color: var(--text-muted); }
+
+@media (max-width: 600px) {
+  header { padding: 1rem; }
+  main { padding: 1rem; }
+  .card-body { padding: 1rem; }
+  .config-grid { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+}
+  </style>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"></div>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <header>
+    <div class="logo">
+      <span aria-hidden="true">🏠</span>
+      <span aria-hidden="true">🔀</span>
+      <span class="logo-name">Scrambler</span>
+    </div>
+    <button id="new-session" class="btn btn-danger btn-sm" aria-label="Start over and clear the current session"><span aria-hidden="true">🔄</span> Start Over</button>
+  </header>
+
+  <main id="main-content">
+    <div class="hero">
+      <h1><span aria-hidden="true">🔀</span> Anonymize Sensitive Data</h1>
+      <p>Mask PII in text before sharing with LLMs or external parties</p>
+    </div>
+
+    
+
+    <section id="text-tab">
+    <div class="security-notice">
+      <div class="icon" aria-hidden="true">💻</div>
+      <div>
+        <h2>Offline Copy — Text Masking Only</h2>
+        <p>This file runs entirely on your computer. No network connection is required, no data is sent anywhere, and nothing is stored. PDF redaction is not available because it requires the server-side redactor.</p>
+      </div>
+    </div>
+      <div class="security-notice">
+        <div class="icon" aria-hidden="true">🔒</div>
+        <div>
+          <h2>100% Private — Browser-Only Processing</h2>
+          <p>Text masking happens entirely in your browser. Nothing is sent to any server. You can confirm this by opening your browser's Network panel and watching zero requests appear while you mask. When you close this tab, everything disappears.</p>
+        </div>
+      </div>
+
+      
+
+      <div class="card">
+        <div class="card-header"><h2>① Paste Your Sensitive Text</h2></div>
+        <div class="card-body">
+          <label for="input-text" class="sr-only">Sensitive text to mask</label>
+          <textarea id="input-text" placeholder="Paste text containing sensitive data..." aria-describedby="input-hint"></textarea>
+          <p id="input-hint" class="hint">Auto-detects: SSN, Email, Phone, IP, DOB, MRN, Account, Credit Card, Driver's License</p>
+
+          <div id="text-status" class="status-region hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+          <div class="action-row">
+            <button id="mask-btn" class="btn btn-primary" aria-label="Mask sensitive data in the text"><span aria-hidden="true">🔒</span> Mask Sensitive Data</button>
+            <span class="hint-inline">All processing happens locally.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="config-card">
+        <div class="card-header"><h2>Configure Masking</h2></div>
+        <div class="card-body">
+          <div class="config-section">
+            <h3>Presets</h3>
+            <div class="preset-row" id="preset-row">
+              <button type="button" class="btn btn-ghost btn-sm preset" data-preset="everything">Everything</button>
+              <button type="button" class="btn btn-ghost btn-sm preset" data-preset="technical">Technical documentation</button>
+              <button type="button" class="btn btn-ghost btn-sm preset" data-preset="medical">Medical records</button>
+            </div>
+          </div>
+
+          <div class="config-section">
+            <h3>Detection Types</h3>
+            <div class="config-grid" id="toggle-container"></div>
+          </div>
+
+          <div class="config-section">
+            <h3>Always Mask <span class="hint-inline">(inclusions — override pattern detection, but exclusions take precedence)</span></h3>
+            <div class="list-add-row">
+              <label for="always-add-input" class="sr-only">Term to always mask</label>
+              <input type="text" id="always-add-input" placeholder="Name, codename, hostname, system...">
+              <label for="always-add-type" class="sr-only">Replacement type</label>
+              <select id="always-add-type">
+                <option value="name">Name</option>
+                <option value="company">Company</option>
+                <option value="generic">Generic</option>
+              </select>
+              <button id="always-add-btn" type="button" class="btn btn-primary btn-sm">Add</button>
+            </div>
+            <ul id="always-list" class="term-list"></ul>
+          </div>
+
+          <div class="config-section">
+            <h3>Never Mask <span class="hint-inline">(exclusions — take precedence over pattern detection and always-mask)</span></h3>
+            <div class="list-add-row">
+              <label for="never-add-input" class="sr-only">Term to never mask</label>
+              <input type="text" id="never-add-input" placeholder="Example address, support email, version string...">
+              <button id="never-add-btn" type="button" class="btn btn-primary btn-sm">Add</button>
+            </div>
+            <ul id="never-list" class="term-list"></ul>
+          </div>
+
+          <div class="config-section persist-section">
+            <label class="checkbox-label">
+              <input type="checkbox" id="remember-terms">
+              <span>Remember my custom terms on this device</span>
+            </label>
+            <p id="remember-hint" class="hint">This stores your always-mask and never-mask lists in the browser's localStorage. It is off by default because those lists often contain the very secrets Scrambler exists to protect.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card hidden" id="detected-card">
+        <div class="card-header"><h2>Detected &amp; Replaced <span class="badge badge-count" id="detected-count">0</span></h2></div>
+        <div class="card-body">
+          <ul id="detected-list" class="detected-list"></ul>
+        </div>
+      </div>
+
+      <div class="card hidden" id="masked-card">
+        <div class="card-header"><h2>② Copy This to Your LLM</h2><button id="copy-masked-btn" class="btn btn-success btn-sm"><span aria-hidden="true">📋</span> Copy</button></div>
+        <div class="card-body">
+          <label for="masked-text" class="sr-only">Masked text</label>
+          <textarea id="masked-text" readonly></textarea>
+        </div>
+      </div>
+
+      <div class="arrow-divider hidden" id="arrow-divider" aria-hidden="true">⬇️ Paste response below ⬇️</div>
+
+      <div class="card hidden" id="response-card">
+        <div class="card-header"><h2>③ Paste LLM Response</h2></div>
+        <div class="card-body">
+          <label for="llm-response" class="sr-only">LLM response to unmask</label>
+          <textarea id="llm-response" placeholder="Paste the AI's response here..."></textarea>
+          <button id="unmask-btn" class="btn btn-success" aria-label="Restore original values in the LLM response"><span aria-hidden="true">🔓</span> Unmask</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="final-card">
+        <div class="card-header"><h2>④ Restored Text</h2><button id="copy-final-btn" class="btn btn-primary btn-sm"><span aria-hidden="true">📋</span> Copy</button></div>
+        <div class="card-body">
+          <label for="final-text" class="sr-only">Restored text</label>
+          <textarea id="final-text" readonly></textarea>
+        </div>
+      </div>
+    </section>
+
+    
+  </main>
+
+  <footer>
+    <p>Part of Scott's Lab — Built with privacy in mind</p>
+    <p>How to use Scrambler</p>
+  </footer>
+
+  <div id="announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  
+  <script>
+/**
+ * Scrambler front end.
+ *
+ * Text masking is 100% client-side: no network request is made while masking.
+ * Always-mask and never-mask lists are intentionally NOT persisted to localStorage
+ * by default, because they frequently contain the very secrets the tool protects.
+ * Type toggles and the selected preset are persisted because they are not sensitive.
+ */
+(function () {
+  'use strict';
+
+  const requestAnimationFrame = (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function')
+    ? window.requestAnimationFrame
+    : (cb) => setTimeout(cb, 0);
+
+  const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+  const FAKE = {
+    companies: ['Contoso','Fabrikam','Northwind','Adventure Works','Woodgrove','Tailspin'],
+    firstNames: ['Alex','Jordan','Taylor','Morgan','Casey','Riley','Quinn','Avery'],
+    lastNames: ['Smith','Johnson','Williams','Brown','Jones','Miller','Davis','Wilson'],
+    domains: ['contoso.com','fabrikam.com','example.org','test.net'],
+    streets: ['Main St','Oak Ave','Elm Dr','Park Blvd','Cedar Ln'],
+    cities: ['Springfield','Riverside','Fairview','Madison','Georgetown']
+  };
+
+  const PATTERNS = [
+    { type: 'ssn', regex: /\b\d{3}[-.]?\d{2}[-.]?\d{4}\b/g, label: 'SSN' },
+    { type: 'email', regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, label: 'Email' },
+    { type: 'phone', regex: /(?<!\w)(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}(?!\d)/g, label: 'Phone' },
+    { type: 'ip', regex: /(?<!\d\.)(?<![0-9])\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b(?!\.\d)/g, label: 'IP' },
+    { type: 'dob', regex: /\b(?:0?[1-9]|1[0-2])\/(?:0?[1-9]|[12]\d|3[01])\/(?:19|20)\d{2}\b/g, label: 'DOB' },
+    { type: 'mrn', regex: /\b(?:MRN|MR#|Medical Record)[:\s#]*\d{5,10}\b/gi, label: 'MRN' },
+    { type: 'account', regex: /\b(?:account|acct|patient id|member id|policy)[:\s#]*\d{4,12}\b/gi, label: 'Account' },
+    { type: 'creditCard', regex: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g, label: 'Credit Card' },
+    { type: 'driversLicense', regex: /\b[A-Z]{1,3}\d{6,10}\b/gi, label: 'License' }
+  ];
+
+  const ALWAYS_TYPES = [
+    { value: 'name', label: 'Name' },
+    { value: 'company', label: 'Company' },
+    { value: 'generic', label: 'Generic' }
+  ];
+
+  const PRESETS = {
+    everything: { name: 'Everything', types: PATTERNS.map(p => p.type) },
+    technical: { name: 'Technical documentation', types: ['ssn','email','phone','mrn','account','creditCard','driversLicense'] },
+    medical: { name: 'Medical records', types: PATTERNS.map(p => p.type), emphasised: ['dob','mrn'] }
+  };
+
+  const STORAGE = {
+    toggles: 'scrambler-toggles', preset: 'scrambler-preset', remember: 'scrambler-remember-terms',
+    always: 'scrambler-always-mask', never: 'scrambler-never-mask'
+  };
+
+  let mappings = [], counters = {}, activePreset = 'custom';
+  let toggles = Object.fromEntries(PATTERNS.map(p => [p.type, true])), alwaysMask = [], neverMask = [], rememberTerms = false;
+
+  const $ = id => document.getElementById(id);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  function storageRead(k, fallback) { try { const v = localStorage.getItem(k); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } }
+  function storageWrite(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  function storageRemove(k) { try { localStorage.removeItem(k); } catch {} }
+
+  function esc(t) { const d = document.createElement('span'); d.textContent = t; return d.innerHTML; }
+  function attrEsc(v) { return String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function wordPattern(t) { return new RegExp('(?<!\\w)' + escapeRegex(t) + '(?!\\w)', 'gi'); }
+  function uid() { return 'a' + Math.random().toString(36).slice(2, 9); }
+  function getNext(k) { if (!counters[k]) counters[k] = 0; return counters[k]++; }
+
+  function generateFake(type) {
+    switch (type) {
+      case 'email': return `${FAKE.firstNames[getNext('fn')%FAKE.firstNames.length].toLowerCase()}.${FAKE.lastNames[getNext('ln')%FAKE.lastNames.length].toLowerCase()}@${FAKE.domains[getNext('dom')%FAKE.domains.length]}`;
+      case 'phone': return `(555) ${String(100+getNext('p1')%900).padStart(3,'0')}-${String(1000+getNext('p2')%9000).padStart(4,'0')}`;
+      case 'ssn': return `XXX-XX-${String(1000+getNext('ssn')%9000)}`;
+      case 'name': return `${FAKE.firstNames[getNext('n1')%FAKE.firstNames.length]} ${FAKE.lastNames[getNext('n2')%FAKE.lastNames.length]}`;
+      case 'company': return FAKE.companies[getNext('co')%FAKE.companies.length];
+      case 'ip': return `10.${getNext('ip1')%256}.${getNext('ip2')%256}.${getNext('ip3')%256}`;
+      case 'dob': return `XX/XX/${1950+getNext('dob')%50}`;
+      case 'mrn': return `MRN-${100000+getNext('mrn')%900000}`;
+      case 'account': return `ACCT-${String(getNext('acct')).padStart(6,'0')}`;
+      case 'creditCard': return `XXXX-XXXX-XXXX-${String(1000+getNext('cc')%9000)}`;
+      case 'driversLicense': return `DL-${String(100000+getNext('dl')%900000)}`;
+      default: return `[REDACTED-${Math.random().toString(36).slice(2,6).toUpperCase()}]`;
+    }
+  }
+
+  function overlaps(s, e, intervals) { return intervals.some(i => s < i.end && e > i.start); }
+
+  function getExclusionIntervals(text) {
+    const intervals = [];
+    for (const n of neverMask) for (const m of text.matchAll(wordPattern(n.term))) intervals.push({ start: m.index, end: m.index + m[0].length });
+    return intervals;
+  }
+
+  const DOB_CONTEXT_RE = /(?:^|[^a-zA-Z.])D\.?O\.?B\.?(?:[:\s.,;]|$)|\bDate of Birth\b|\bBirth\s*Date\b|\bborn\b/i;
+  function hasDobContext(text, s, e) {
+    const window = (text.slice(Math.max(0, s - 40), Math.min(text.length, e + 40)) || '');
+    return DOB_CONTEXT_RE.test(window);
+  }
+
+  function applyMasks(text, accepted, mapList = mappings) {
+    const sorted = [...accepted].sort((a, b) => a.start - b.start);
+    let out = '', pos = 0;
+    for (const c of sorted) {
+      out += text.slice(pos, c.start);
+      const m = mapList.find(x => x.original === c.original);
+      out += m ? m.masked : c.original;
+      pos = c.end;
+    }
+    out += text.slice(pos);
+    return out;
+  }
+
+  // Exclusions take precedence over both pattern detection and the always-mask list.
+  function findCandidates(text) {
+    const exclusions = getExclusionIntervals(text), candidates = [];
+    for (const p of PATTERNS) {
+      if (!toggles[p.type]) continue;
+      for (const m of text.matchAll(p.regex)) {
+        const s = m.index, e = s + m[0].length;
+        if (overlaps(s, e, exclusions)) continue;
+        if (p.type === 'dob' && !hasDobContext(text, s, e)) continue;
+        candidates.push({ start: s, end: e, original: m[0], type: p.type, label: p.label });
+      }
+    }
+    for (const a of alwaysMask) {
+      for (const m of text.matchAll(wordPattern(a.term))) {
+        const s = m.index, e = s + m[0].length;
+        if (overlaps(s, e, exclusions)) continue;
+        candidates.push({ start: s, end: e, original: m[0], type: a.replacementType, label: ALWAYS_TYPES.find(t => t.value === a.replacementType)?.label || 'Custom' });
+      }
+    }
+    candidates.sort((a, b) => a.start - b.start || b.original.length - a.original.length);
+    const accepted = [];
+    for (const c of candidates) if (!accepted.some(a => c.start < a.end && c.end > a.start)) accepted.push(c);
+    return accepted;
+  }
+
+  function maskText() {
+    const text = $('input-text').value;
+    if (!text.trim()) { setStatus('text-status', 'Please paste some text to mask.', 'error'); return; }
+    $('mask-btn').disabled = true;
+    setStatus('text-status', 'Masking...', 'processing');
+    counters = {};
+    const accepted = findCandidates(text);
+    const keepOriginals = new Set(accepted.map(c => c.original));
+    mappings = mappings.filter(m => keepOriginals.has(m.original));
+    for (const c of accepted) {
+      const existing = mappings.find(m => m.original === c.original);
+      if (existing) { existing.type = c.label; }
+      else { mappings.push({ id: uid(), original: c.original, masked: generateFake(c.type), type: c.label }); }
+    }
+    $('masked-text').value = applyMasks(text, accepted);
+    show(['masked-card', 'arrow-divider', 'response-card']);
+    hide('final-card');
+    $('llm-response').value = '';
+    renderDetected();
+    updateCounts();
+    setStatus('text-status', `${accepted.length} sensitive item(s) masked. Masked text is ready to copy.`, 'success');
+    announce(`${accepted.length} sensitive item${accepted.length === 1 ? '' : 's'} masked.`);
+    $('mask-btn').disabled = false;
+  }
+
+  function renderDetected() {
+    const list = $('detected-list');
+    if (mappings.length === 0) { hide('detected-card'); return; }
+    show('detected-card');
+    $('detected-count').textContent = mappings.length;
+    list.innerHTML = mappings.map(m => `<li><span class="detected-type">${esc(m.type)}</span><span class="detected-original">${esc(m.original)}</span><span class="detected-arrow" aria-hidden="true">→</span><span class="detected-masked">${esc(m.masked)}</span><button type="button" class="detected-delete" data-action="delete-mapping" data-id="${m.id}" aria-label="Remove ${attrEsc(m.original)}">×</button></li>`).join('');
+  }
+
+  function deleteMapping(id) {
+    mappings = mappings.filter(m => m.id !== id);
+    const text = $('input-text').value;
+    if (text.trim()) {
+      const accepted = findCandidates(text);
+      $('masked-text').value = applyMasks(text, accepted);
+    }
+    renderDetected();
+    updateCounts();
+    announce('Mapping removed.');
+  }
+
+  function unmaskText() {
+    const text = $('llm-response').value.trim();
+    if (!text) { setStatus('text-status', 'Please paste the LLM response first.', 'error'); return; }
+    const sorted = [...mappings].sort((a, b) => b.masked.length - a.masked.length);
+    let result = text;
+    for (const m of sorted) result = result.split(m.masked).join(m.original);
+    $('final-text').value = result;
+    show('final-card');
+    setStatus('text-status', 'Original values restored.', 'success');
+    announce('Original values restored.');
+  }
+
+  async function copyTo(textareaId, successMessage) {
+    try {
+      await navigator.clipboard.writeText($(textareaId).value);
+      setStatus('text-status', `${successMessage} copied to clipboard.`, 'success');
+      announce(`${successMessage} copied.`);
+    } catch {
+      setStatus('text-status', 'Copy failed. Select the text and copy manually.', 'error');
+    }
+  }
+
+  function addTerm(list, input, typeSelect, typeName) {
+    const term = input.value.trim();
+    if (!term) return;
+    if (list.some(x => x.term.toLowerCase() === term.toLowerCase())) { setStatus('text-status', `That term is already in the ${typeName}-mask list.`, 'error'); return; }
+    const item = { id: uid(), term };
+    if (typeSelect) item.replacementType = typeSelect.value;
+    list.push(item);
+    input.value = '';
+    saveTerms();
+    typeSelect ? renderAlways() : renderNever();
+    updateCounts();
+    announce(`Term added to ${typeName}-mask list.`);
+  }
+
+  function removeTerm(list, id, render) { list.splice(list.findIndex(x => x.id === id), 1); saveTerms(); render(); updateCounts(); }
+
+  function updateTerm(list, id, type, render) {
+    const li = $(`${type}-${id}`);
+    const input = li.querySelector('[data-edit]');
+    const term = input.value.trim();
+    if (!term) return;
+    const item = list.find(x => x.id === id);
+    if (!item) return;
+    item.term = term;
+    const typeSelect = li.querySelector('[data-edit-type]');
+    if (typeSelect) item.replacementType = typeSelect.value;
+    saveTerms(); render(); updateCounts();
+  }
+
+  function renderList(containerId, items, type) {
+    const list = $(containerId);
+    if (items.length === 0) { list.innerHTML = ''; return; }
+    list.innerHTML = items.map(item => {
+      const badge = type === 'always' ? `<span class="badge badge-type">${esc(ALWAYS_TYPES.find(t => t.value === item.replacementType)?.label || 'Generic')}</span>` : '';
+      const typeSelect = type === 'always' ? `<select data-edit-type>${ALWAYS_TYPES.map(t => `<option value="${t.value}"${t.value === item.replacementType ? ' selected' : ''}>${t.label}</option>`).join('')}</select>` : '';
+      return `<li id="${type}-${item.id}"><span class="view"><span class="term-text">${esc(item.term)}</span>${badge}<span class="match-count" data-match="${attrEsc(item.term)}"></span><button type="button" class="btn btn-ghost btn-sm" data-action="edit-${type}" data-id="${item.id}">Edit</button><button type="button" class="btn btn-danger btn-sm" data-action="remove-${type}" data-id="${item.id}">Remove</button></span><span class="edit"><input type="text" data-edit value="${attrEsc(item.term)}">${typeSelect}<button type="button" class="btn btn-success btn-sm" data-action="save-${type}" data-id="${item.id}">Save</button><button type="button" class="btn btn-ghost btn-sm" data-action="cancel-${type}" data-id="${item.id}">Cancel</button></span></li>`;
+    }).join('');
+  }
+
+  function renderAlways() { renderList('always-list', alwaysMask, 'always'); }
+  function renderNever() { renderList('never-list', neverMask, 'never'); }
+
+  function renderToggles() {
+    $('toggle-container').innerHTML = PATTERNS.map(p => `<div class="toggle-item" data-type="${p.type}"><label for="toggle-${p.type}"><input type="checkbox" id="toggle-${p.type}" data-toggle="${p.type}"><span>${p.label}</span></label><span class="badge badge-count empty" data-count="${p.type}">0</span></div>`).join('');
+    updateTogglesUI();
+  }
+
+  function updateTogglesUI() {
+    const emphasised = PRESETS[activePreset]?.emphasised || [];
+    for (const p of PATTERNS) {
+      const item = document.querySelector(`.toggle-item[data-type="${p.type}"]`);
+      if (item) {
+        item.querySelector('input[type="checkbox"]').checked = toggles[p.type];
+        item.classList.toggle('emphasised', emphasised.includes(p.type));
+      }
+    }
+    for (const btn of $$('.preset')) btn.classList.toggle('active', btn.dataset.preset === activePreset);
+    updateCounts();
+  }
+
+  function updateCounts() {
+    const text = $('input-text').value;
+    const accepted = text.trim() ? findCandidates(text) : [];
+    const counts = Object.fromEntries(PATTERNS.map(p => [p.type, 0]));
+    for (const c of accepted) if (c.type in counts) counts[c.type]++;
+    for (const p of PATTERNS) {
+      const el = document.querySelector(`[data-count="${p.type}"]`);
+      if (el) { el.textContent = counts[p.type]; el.classList.toggle('empty', counts[p.type] === 0); }
+    }
+    for (const el of $$('.match-count')) {
+      const term = el.dataset.match;
+      if (!term) continue;
+      const count = [...text.matchAll(wordPattern(term))].length;
+      el.textContent = count ? `${count} match${count === 1 ? '' : 'es'}` : '0 matches';
+    }
+  }
+
+  function applyPreset(name) {
+    activePreset = name;
+    const preset = PRESETS[name];
+    toggles = Object.fromEntries(PATTERNS.map(p => [p.type, preset.types.includes(p.type)]));
+    saveSettings(); updateTogglesUI(); announce(`${preset.name} preset applied.`);
+  }
+
+  function onToggleChange(e) {
+    if (!e.target.dataset.toggle) return;
+    toggles[e.target.dataset.toggle] = e.target.checked;
+    activePreset = 'custom';
+    saveSettings(); updateTogglesUI();
+  }
+
+  function saveSettings() { storageWrite(STORAGE.toggles, toggles); storageWrite(STORAGE.preset, activePreset); storageWrite(STORAGE.remember, rememberTerms); }
+  function saveTerms() { if (rememberTerms) { storageWrite(STORAGE.always, alwaysMask); storageWrite(STORAGE.never, neverMask); } else { storageRemove(STORAGE.always); storageRemove(STORAGE.never); } }
+
+  function loadState() {
+    const savedToggles = storageRead(STORAGE.toggles, null);
+    if (savedToggles) toggles = { ...toggles, ...savedToggles };
+    activePreset = storageRead(STORAGE.preset, 'everything');
+    rememberTerms = storageRead(STORAGE.remember, false);
+    if (rememberTerms) { alwaysMask = storageRead(STORAGE.always, []); neverMask = storageRead(STORAGE.never, []); }
+    $('remember-terms').checked = rememberTerms;
+  }
+
+  function onRememberChange() { rememberTerms = $('remember-terms').checked; saveSettings(); saveTerms(); announce(rememberTerms ? 'Custom terms will be remembered on this device.' : 'Custom terms will not be stored on this device.'); }
+  function show(ids) { if (!Array.isArray(ids)) ids = [ids]; for (const item of ids) { const el = typeof item === 'string' ? $(item) : item; if (el) el.classList.remove('hidden'); } }
+  function hide(ids) { if (!Array.isArray(ids)) ids = [ids]; for (const item of ids) { const el = typeof item === 'string' ? $(item) : item; if (el) el.classList.add('hidden'); } }
+
+  function setStatus(id, message, type) {
+    const el = typeof id === 'string' ? $(id) : id;
+    if (!message) { hide(el); return; }
+    el.textContent = message; el.className = 'status-region ' + type;
+  }
+
+  function announce(message) { const a = $('announcer'); a.textContent = ''; requestAnimationFrame(() => { a.textContent = message; }); }
+
+  function newSession() {
+    if ((mappings.length > 0) && !confirm('Start over? This will clear everything.')) return;
+    mappings = []; counters = {};
+$('input-text').value = ''; $('masked-text').value = ''; $('llm-response').value = ''; $('final-text').value = '';
+    hide(['detected-card','masked-card','arrow-divider','response-card','final-card']);
+    renderDetected(); updateCounts();
+  }
+
+  function bindEvents() {
+    $('new-session').addEventListener('click', newSession);
+    $('mask-btn').addEventListener('click', maskText);
+    $('input-text').addEventListener('input', updateCounts);
+    $('copy-masked-btn').addEventListener('click', () => copyTo('masked-text', 'Masked text'));
+    $('unmask-btn').addEventListener('click', unmaskText);
+    $('copy-final-btn').addEventListener('click', () => copyTo('final-text', 'Restored text'));
+    $('always-add-btn').addEventListener('click', () => addTerm(alwaysMask, $('always-add-input'), $('always-add-type'), 'always'));
+    $('always-add-input').addEventListener('keydown', e => { if (e.key === 'Enter') addTerm(alwaysMask, $('always-add-input'), $('always-add-type'), 'always'); });
+    $('never-add-btn').addEventListener('click', () => addTerm(neverMask, $('never-add-input'), null, 'never'));
+    $('never-add-input').addEventListener('keydown', e => { if (e.key === 'Enter') addTerm(neverMask, $('never-add-input'), null, 'never'); });
+    $('remember-terms').addEventListener('change', onRememberChange);
+    $('preset-row').addEventListener('click', e => { const p = e.target.closest('[data-preset]'); if (p) applyPreset(p.dataset.preset); });
+    $('toggle-container').addEventListener('change', onToggleChange);
+    $('detected-list').addEventListener('click', e => { const b = e.target.closest('[data-action="delete-mapping"]'); if (b) deleteMapping(b.dataset.id); });
+
+    const onListClick = (list, type) => (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      const id = b.dataset.id;
+      if (b.dataset.action === `remove-${type}`) removeTerm(list, id, type === 'always' ? renderAlways : renderNever);
+      else if (b.dataset.action === `edit-${type}`) { const li = b.closest('li'); if (li) li.classList.add('editing'); }
+      else if (b.dataset.action === `save-${type}`) updateTerm(list, id, type, type === 'always' ? renderAlways : renderNever);
+      else if (b.dataset.action === `cancel-${type}`) { type === 'always' ? renderAlways() : renderNever(); updateCounts(); }
+    };
+    $('always-list').addEventListener('click', onListClick(alwaysMask, 'always'));
+    $('never-list').addEventListener('click', onListClick(neverMask, 'never'));
+
+  }
+
+  function init() { loadState(); bindEvents(); renderToggles(); renderAlways(); renderNever(); updateCounts(); }
+  document.addEventListener('DOMContentLoaded', init);
+  // Offline-only API exposed for programmatic use and tests.
+  function offlineMask(input, config) {
+    if (config) offlineConfigure(config);
+    $('input-text').value = input;
+    maskText();
+    return { text: $('masked-text').value, mappings };
+  }
+  function offlineUnmask(maskedText, mappingsArg) {
+    if (mappingsArg) mappings = mappingsArg;
+    $('llm-response').value = maskedText;
+    unmaskText();
+    return $('final-text').value;
+  }
+  function offlineConfigure(config) {
+    if (config.preset && PRESETS[config.preset]) applyPreset(config.preset);
+    for (const p of PATTERNS) {
+      if (typeof config[p.type] === 'boolean') toggles[p.type] = config[p.type];
+    }
+    if (Array.isArray(config.alwaysMask)) {
+      alwaysMask = config.alwaysMask.map((term) => ({ id: uid(), term, replacementType: 'generic' }));
+    }
+    if (Array.isArray(config.neverMask)) {
+      neverMask = config.neverMask.map((term) => ({ id: uid(), term }));
+    }
+    if (typeof config.rememberCustomTerms === 'boolean') {
+      rememberTerms = config.rememberCustomTerms;
+    }
+    saveTerms();
+  }
+  window.Scrambler = {
+    mask: offlineMask,
+    unmask: offlineUnmask,
+    configure: offlineConfigure,
+    PRESETS,
+    get mappings() { return mappings; }
+  };
+
+})();
+  </script>
+</body>
+</html>

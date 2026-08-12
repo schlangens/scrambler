@@ -1,0 +1,5 @@
+# PyMuPDF (imports as fitz) is the only Python dependency.
+# Pinned to 1.27.1: it is the first release that patches CVE-2025-55780
+# (affected versions < 1.27.1) and has no known advisories in the
+# ReversingLabs or Snyk databases at the time of selection.
+PyMuPDF==1.27.1
