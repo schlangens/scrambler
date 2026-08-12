@@ -101,7 +101,7 @@ PII_PATTERNS = [
     ),
     (
         "Account",
-        r"\b(?:account|acct|patient id|member id)[:\s#]*\d{4,12}\b",
+        r"\b(?:account|acct|policy|patient id|member id)[:\s#]*\d{4,12}\b",
         "[REDACTED]",
     ),
     ("CC", r"\b(?:\d{4}[-\s]?){3}\d{4}\b", "[REDACTED]"),
